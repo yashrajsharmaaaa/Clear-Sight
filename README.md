@@ -1,59 +1,34 @@
-# 🔍 ClearSight - Facial Recognition System
+# ClearSight - Facial Recognition System
 
-A full-stack facial recognition web application built with React and Python Flask.
+A facial recognition web application built with React and Flask.
 
 ## Features
-
-- **Face Detection** - Detect faces in images
-- **User Registration** - Register users with facial data
-- **Face Recognition** - Identify registered users
-- **Dashboard** - View users and recognition history
+- Face detection and recognition
+- User registration with photos
+- Dashboard to view users and logs
 
 ## Tech Stack
-
-**Backend**: Python, Flask, OpenCV, SQLite  
-**Frontend**: React, Axios, React Webcam
+- **Frontend**: React, Axios
+- **Backend**: Python Flask, OpenCV
+- **Database**: SQLite
 
 ## Setup
 
-### Backend
+**Backend:**
 ```bash
 cd backend
 pip install -r requirements.txt
 python app.py
 ```
 
-### Frontend
+**Frontend:**
 ```bash
 cd frontend
 npm install
 npm start
 ```
 
-**Access**: http://localhost:3000
-
-## Project Structure
-```
-ClearSight/
-├── backend/
-│   ├── app.py              # Flask application
-│   ├── database.py         # Database operations
-│   ├── face_processor.py   # Face recognition logic
-│   └── requirements.txt    # Python dependencies
-└── frontend/
-    ├── src/
-    │   ├── components/     # React components
-    │   └── services/       # API communication
-    └── package.json        # Node dependencies
-```
-
-## API Endpoints
-
-- `POST /api/detect-face` - Detect faces in image
-- `POST /api/register` - Register new user
-- `POST /api/recognize` - Recognize face
-- `GET /api/users` - Get all users
-- `GET /api/logs` - Get recognition logs
+Open http://localhost:3000
 
 ## How It Works
 
@@ -62,29 +37,6 @@ ClearSight/
 3. **Face Recognition**: The system compares new faces against registered users
 4. **Results Display**: Shows recognition results with confidence scores
 
-## Deployment
-
-Deploy your project for **FREE** using:
-
-### Frontend → Vercel (Free)
-```bash
-# Push to GitHub first, then:
-# 1. Connect to vercel.com
-# 2. Import your repository
-# 3. Set root directory: frontend
-# 4. Deploy!
-```
-
-### Backend → Railway (Free)
-```bash
-# Push to GitHub first, then:
-# 1. Connect to railway.app
-# 2. Import your repository  
-# 3. Set root directory: backend
-# 4. Deploy!
-```
-
-📖 **Detailed guide**: See [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)
 
 ## Key Learning Concepts
 
@@ -98,32 +50,6 @@ This project demonstrates:
 - **Docker Containerization**: Multi-service container setup
 - **File Handling**: Image upload and processing
 - **Error Handling**: Proper error responses and validation
-
-## Troubleshooting
-
-### Common Issues
-
-#### Face Recognition Installation
-```
-# Linux/Ubuntu
-sudo apt-get install cmake build-essential
-
-# macOS
-brew install cmake
-
-# Windows
-# Install Visual Studio Build Tools
-
-```
-
-#### Docker Issues
-```
-# Rebuild containers
-docker-compose down
-docker-compose build --no-cache
-docker-compose up
-
-```
 
 
 ## Demo
@@ -156,23 +82,13 @@ Building this project taught me:
 - **React State Management**: Handling complex UI state and API interactions
 - **File Upload Handling**: Secure image processing and storage
 
-## Contributing
-
-Feel free to:
-- Report bugs
-- Suggest improvements
-- Submit pull requests
-- Ask questions
-
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Contact
 
-- GitHub: [Your GitHub Profile]
-- LinkedIn: [Your LinkedIn Profile]
-- Email: [Your Email]
+- GitHub: (https://github.com/yashrajsharmaaaa)
+- LinkedIn: (https://www.linkedin.com/in/yashrajsharmaaaa/)]
+- Email: [yashrajsharma413@gmail.com]
 
----
-**Built as a portfolio project to demonstrate full-stack development skills** 🚀
