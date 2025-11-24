@@ -9,8 +9,8 @@ A facial recognition web application built with React and Flask.
 
 ## Tech Stack
 - **Frontend**: React, Axios
-- **Backend**: Python Flask, OpenCV
-- **Database**: MySQL (production) / SQLite (legacy support)
+- **Backend**: Python Flask, OpenCV, mysql-connector-python
+- **Database**: MySQL (production-ready with connection pooling)
 
 ## Setup
 
@@ -18,17 +18,17 @@ A facial recognition web application built with React and Flask.
 
 - Python 3.8 or higher
 - Node.js 14 or higher
-- MySQL 8.0 or higher (see [MySQL Setup Guide](MYSQL_SETUP.md))
+- MySQL 8.0 or higher
 
 ### Database Configuration
 
-ClearSight uses MySQL for production deployments. For detailed MySQL installation and configuration instructions, see the **[MySQL Setup Guide](MYSQL_SETUP.md)**.
+ClearSight uses MySQL for production deployments with connection pooling for optimal performance.
 
-**Quick MySQL Setup:**
+**MySQL Setup:**
 
-1. Install MySQL on your system (see [MYSQL_SETUP.md](MYSQL_SETUP.md) for platform-specific instructions)
+1. **Install MySQL** on your system or use a cloud provider (Railway, PlanetScale, AWS RDS, Google Cloud SQL)
 
-2. Create database and user:
+2. **Create database and user:**
    ```sql
    CREATE DATABASE clearsight CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
    CREATE USER 'clearsight_user'@'localhost' IDENTIFIED BY 'your_secure_password';
@@ -36,8 +36,9 @@ ClearSight uses MySQL for production deployments. For detailed MySQL installatio
    FLUSH PRIVILEGES;
    ```
 
-3. Configure environment variables in `backend/.env`:
+3. **Configure environment variables** in `backend/.env`:
    ```bash
+   DATABASE_TYPE=mysql
    MYSQL_HOST=localhost
    MYSQL_PORT=3306
    MYSQL_DATABASE=clearsight
@@ -46,7 +47,11 @@ ClearSight uses MySQL for production deployments. For detailed MySQL installatio
    MYSQL_POOL_SIZE=5
    ```
 
-For complete setup instructions including cloud platform configurations (AWS RDS, Google Cloud SQL, Railway, PlanetScale), see [MYSQL_SETUP.md](MYSQL_SETUP.md).
+**Cloud MySQL Providers:**
+- **Railway**: Built-in MySQL service with easy setup
+- **PlanetScale**: Serverless MySQL with free tier
+- **AWS RDS**: Enterprise-grade managed MySQL
+- **Google Cloud SQL**: Fully managed MySQL with high availability
 
 ### Backend Setup
 
@@ -106,9 +111,10 @@ This project demonstrates:
 - **Full-Stack Development**: Frontend and backend integration
 - **Computer Vision**: Face detection and recognition using OpenCV
 - **REST API Design**: Clean API endpoints with proper HTTP methods
-- **Database Design**: SQLite database with relationships
+- **Database Design**: MySQL with connection pooling and relationships
+- **Production Database**: MySQL migration with connection pool management
 - **React Development**: Component-based UI with hooks
-- **Docker Containerization**: Multi-service container setup
+- **Cloud Deployment**: Multi-platform deployment (Render, Railway)
 - **File Handling**: Image upload and processing
 - **Error Handling**: Proper error responses and validation
 
@@ -124,24 +130,23 @@ This project demonstrates:
 
 ## Deployment
 
-### Production Deployment with MySQL
+### Production Deployment
 
-ClearSight is designed for production deployment with MySQL database. The application supports various cloud platforms:
+ClearSight is production-ready with MySQL database support and connection pooling.
 
 #### Supported Platforms
 
-- **AWS RDS**: Managed MySQL with automatic backups and scaling
-- **Google Cloud SQL**: Fully managed MySQL with high availability
-- **Railway**: Simple deployment with built-in MySQL provisioning
-- **PlanetScale**: Serverless MySQL with branching and scaling
-- **Render**: Deploy with external MySQL provider
+- **Render**: Web service deployment (use Railway/PlanetScale for MySQL)
+- **Railway**: Built-in MySQL database service
+- **PlanetScale**: Serverless MySQL with free tier
+- **AWS RDS**: Enterprise-grade managed MySQL
+- **Google Cloud SQL**: Fully managed MySQL
 
 #### Environment Variables for Production
 
-Ensure these variables are set in your production environment:
-
 ```bash
-# MySQL Configuration (Required)
+# Database Configuration (Required)
+DATABASE_TYPE=mysql
 MYSQL_HOST=your-mysql-host
 MYSQL_PORT=3306
 MYSQL_DATABASE=clearsight
@@ -150,49 +155,38 @@ MYSQL_PASSWORD=your-secure-password
 
 # Connection Pool Settings
 MYSQL_POOL_SIZE=10
-MYSQL_POOL_RECYCLE=3600
 
 # Application Settings
 SECRET_KEY=your-production-secret-key
 CORS_ORIGINS=https://your-frontend-domain.com
-
-# Optional Settings
-MIN_SHARPNESS=30.0
-MIN_BRIGHTNESS=60.0
-MAX_BRIGHTNESS=200.0
 ```
 
-#### Deployment Steps
+#### Quick Deployment Steps
 
-1. **Set up MySQL database** on your chosen platform (see [MYSQL_SETUP.md](MYSQL_SETUP.md))
+1. **Set up MySQL database** on Railway, PlanetScale, or your preferred provider
 2. **Configure environment variables** in your deployment platform
-3. **Deploy application code** to your hosting service
-4. **Initialize database schema** by running `python database.py`
-5. **Verify connection** and test application endpoints
+3. **Deploy application** to Render or your hosting service
+4. **Database schema** initializes automatically on first run
+5. **Verify** application is running and connected to MySQL
 
-For platform-specific deployment instructions, see:
-- [MYSQL_SETUP.md](MYSQL_SETUP.md) - MySQL setup for all platforms
-- [RENDER_CONFIG.md](RENDER_CONFIG.md) - Render-specific deployment guide
+#### Example: Render + Railway MySQL
 
-### Database Migration
-
-If you're migrating from SQLite to MySQL, the application automatically handles schema creation. Simply:
-
-1. Set up your MySQL database
-2. Configure environment variables
-3. Run `python database.py` to create tables
-4. (Optional) Migrate existing data using a migration script
+1. Create MySQL database on Railway
+2. Copy connection credentials from Railway dashboard
+3. Create web service on Render
+4. Add Railway MySQL credentials as environment variables on Render
+5. Deploy and verify
 
 ## Future Enhancements
 
 - Real-time webcam recognition
 - Multiple face detection in single image
 - User authentication system
-- REST API improvements
 - Mobile responsive design
-- Performance optimizations
 - Advanced analytics dashboard
-- Multi-region database replication
+- Database read replicas for scaling
+- Redis caching layer
+- API rate limiting
 
 ## What I Learned
 
