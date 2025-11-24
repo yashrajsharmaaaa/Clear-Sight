@@ -73,6 +73,14 @@ backup_*
 # Kiro specs (development only)
 .kiro/
 
+# Hypothesis test cache
+.hypothesis/
+backend/.hypothesis/
+
+# Pytest cache
+.pytest_cache/
+backend/.pytest_cache/
+
 # Deployment documentation (keep only essential)
 VERCEL_DEPLOYMENT.md
 VERCEL_ONLY_DEPLOYMENT.md
