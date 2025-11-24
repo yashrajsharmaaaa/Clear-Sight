@@ -8,4 +8,4 @@ onnxruntime==1.19.2
 gunicorn==21.2.0
 waitress==2.1.2
 mysql-connector-python>=8.0.0
-hypothesis>=6.0.0
+python-dotenv>=1.0.0

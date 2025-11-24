@@ -4,9 +4,13 @@ import cv2
 import numpy as np
 import os
 from datetime import datetime
+from dotenv import load_dotenv
 from database import init_database, add_user, get_all_users, get_user_by_id, log_recognition, get_recognition_logs, get_user_features
 from face_processor import FaceProcessor
 from config import get_flask_config, get_cors_config, ensure_directories, get_upload_path
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Initialize directories
 ensure_directories()
