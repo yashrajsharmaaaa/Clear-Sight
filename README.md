@@ -17,18 +17,20 @@ A facial recognition web application built with React and Flask.
 **Backend:**
 ```bash
 cd backend
-pip install -r requirements.txt
-python app.py
+python -m venv venv
+venv\Scripts\python.exe -m pip install --upgrade pip
+venv\Scripts\python.exe -m pip install -r requirements.txt
+venv\Scripts\python.exe app.py
 ```
 
 **Frontend:**
 ```bash
 cd frontend
-npm install
-npm start
+npm ci
+npm run build
 ```
 
-Open http://localhost:3000
+Then open http://localhost:5000 (Flask serves the built React app)
 
 ## How It Works
 

@@ -5,6 +5,8 @@ import apiService from '../services/api';
 const Registration = () => {
   const webcamRef = useRef(null);
   const [name, setName] = useState('');
+  const [employeeId, setEmployeeId] = useState('');
+  const [department, setDepartment] = useState('');
   const [email, setEmail] = useState('');
   const [isRegistering, setIsRegistering] = useState(false);
   const [capturedImage, setCapturedImage] = useState(null);
@@ -16,6 +18,11 @@ const Registration = () => {
     height: 480,
     facingMode: "user"
   };
+
+  const [nameFocused, setNameFocused] = useState(false);
+  const [emailFocused, setEmailFocused] = useState(false);
+  const [captureHover, setCaptureHover] = useState(false);
+  const [registerHover, setRegisterHover] = useState(false);
 
   const capturePhoto = useCallback(() => {
     const imageSrc = webcamRef.current.getScreenshot();
@@ -46,7 +53,19 @@ const Registration = () => {
     setStatus('🔄 Registering user...');
 
     try {
-      const result = await apiService.registerUser(name.trim(), email.trim(), capturedImage);
+      console.log('Registering user with data:', {
+        name: name.trim(),
+        email: email.trim(),
+        employeeId: employeeId.trim(),
+        department: department.trim(),
+        imageDataLength: capturedImage ? capturedImage.length : 0
+      });
+      
+      // Log the API base URL from the service
+      console.log('Using API service for registration');
+      
+      const result = await apiService.registerUser(name.trim(), email.trim(), capturedImage, employeeId.trim(), department.trim());
+      console.log('Registration response:', result);
       setRegistrationResult(result);
       
       if (result.success) {
@@ -54,131 +73,221 @@ const Registration = () => {
         // Clear form after successful registration
         setTimeout(() => {
           setName('');
+          setEmployeeId('');
+          setDepartment('');
           setEmail('');
           setCapturedImage(null);
           setRegistrationResult(null);
           setStatus('');
         }, 3000);
       } else {
-        setStatus(`❌ Registration failed: ${result.message}`);
+        setStatus(`❌ Registration failed: ${result.message || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Registration error:', error);
-      setStatus('❌ Error connecting to server');
+      console.error('Error details:', error.response ? error.response.data : 'No response data');
+      console.error('Error status:', error.response ? error.response.status : 'No status');
+      setStatus(`❌ Error connecting to server: ${error.message || 'Unknown error'}`);
     } finally {
       setIsRegistering(false);
     }
   };
 
   return (
-    <div className="page-container">
-      <h2 className="page-title">➕ User Registration</h2>
-      
-      <div style={{ display: 'flex', gap: '30px', flexWrap: 'wrap', justifyContent: 'center' }}>
-        {/* Camera Section */}
-        <div style={{ flex: '1', minWidth: '300px' }}>
-          <h3>📷 Capture Photo</h3>
-          <div className="camera-container">
-            {!capturedImage ? (
-              <Webcam
-                audio={false}
-                ref={webcamRef}
-                screenshotFormat="image/jpeg"
-                videoConstraints={videoConstraints}
-                className="camera-feed"
-              />
-            ) : (
-              <img 
-                src={capturedImage} 
-                alt="Captured" 
-                className="camera-feed"
-                style={{ maxWidth: '100%' }}
-              />
-            )}
-          </div>
-          
-          <div className="camera-controls">
-            {!capturedImage ? (
-              <button 
-                className="btn btn-primary" 
-                onClick={capturePhoto}
-              >
-                📸 Capture Photo
-              </button>
-            ) : (
-              <button 
-                className="btn btn-warning" 
-                onClick={retakePhoto}
-              >
-                🔄 Retake Photo
-              </button>
-            )}
-          </div>
-        </div>
+    <div style={{ backgroundColor: '#F8FAFC', minHeight: '100vh', padding: '40px 16px', fontFamily: 'Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif', color: '#1E293B' }}>
+      <div style={{ maxWidth: 960, margin: '0 auto' }}>
+        <h2 style={{ fontSize: 32, fontWeight: 700, marginBottom: 24 }}>Employee Registration</h2>
 
-        {/* Registration Form */}
-        <div style={{ flex: '1', minWidth: '300px' }}>
-          <h3>📝 User Details</h3>
-          <form onSubmit={(e) => { e.preventDefault(); registerUser(); }}>
-            <div className="form-group">
-              <label htmlFor="name">Full Name *</label>
-              <input
-                type="text"
-                id="name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Enter your full name"
-                required
-              />
+        <div style={{ backgroundColor: '#FFFFFF', borderRadius: 16, boxShadow: '0 10px 25px rgba(15, 23, 42, 0.06)', padding: 24 }}>
+          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+            {/* Left: Camera */}
+            <div style={{ flex: '1 1 340px' }}>
+              <div style={{ borderRadius: 12, overflow: 'hidden', border: '1px solid #E2E8F0', background: '#F8FAFC' }}>
+                {!capturedImage ? (
+                  <Webcam
+                    audio={false}
+                    ref={webcamRef}
+                    screenshotFormat="image/jpeg"
+                    videoConstraints={videoConstraints}
+                    style={{ width: '100%', aspectRatio: '4 / 3', display: 'block', background: '#0f172a10' }}
+                  />
+                ) : (
+                  <img 
+                    src={capturedImage} 
+                    alt="Captured" 
+                    style={{ width: '100%', aspectRatio: '4 / 3', display: 'block' }}
+                  />
+                )}
+              </div>
+              <div style={{ marginTop: 12 }}>
+                {!capturedImage ? (
+                  <button
+                    onClick={capturePhoto}
+                    onMouseEnter={() => setCaptureHover(true)}
+                    onMouseLeave={() => setCaptureHover(false)}
+                    style={{
+                      width: '100%',
+                      backgroundColor: captureHover ? '#2563EB' : '#3B82F6',
+                      color: '#FFFFFF',
+                      border: 'none',
+                      borderRadius: 10,
+                      padding: '12px 16px',
+                      fontWeight: 600,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Capture Photo
+                  </button>
+                ) : (
+                  <button
+                    onClick={retakePhoto}
+                    style={{
+                      width: '100%',
+                      backgroundColor: '#E2E8F0',
+                      color: '#1E293B',
+                      border: 'none',
+                      borderRadius: 10,
+                      padding: '12px 16px',
+                      fontWeight: 600,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Retake Photo
+                  </button>
+                )}
+              </div>
             </div>
 
-            <div className="form-group">
-              <label htmlFor="email">Email Address</label>
-              <input
-                type="email"
-                id="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Enter your email (optional)"
-              />
-            </div>
+            {/* Right: Form */}
+            <div style={{ flex: '1 1 340px' }}>
+              <form onSubmit={(e) => { e.preventDefault(); registerUser(); }}>
+                <div style={{ marginBottom: 14 }}>
+                  <label htmlFor="name" style={{ display: 'block', marginBottom: 8, fontWeight: 600 }}>Full Name *</label>
+                  <input
+                    type="text"
+                    id="name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    onFocus={() => setNameFocused(true)}
+                    onBlur={() => setNameFocused(false)}
+                    placeholder="Enter your full name"
+                    required
+                    style={{
+                      width: '100%',
+                      padding: '12px 14px',
+                      borderRadius: 10,
+                      border: `1px solid ${nameFocused ? '#3B82F6' : '#E2E8F0'}`,
+                      outline: 'none',
+                      backgroundColor: '#FFFFFF',
+                      color: '#1E293B'
+                    }}
+                  />
+                </div>
 
-            <button 
-              type="submit"
-              className="btn btn-success" 
-              disabled={isRegistering || !capturedImage || !name.trim()}
-              style={{ width: '100%' }}
-            >
-              {isRegistering ? (
-                <>
-                  <span className="loading"></span> Registering...
-                </>
-              ) : (
-                '✅ Register User'
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+                  <div>
+                    <label htmlFor="employeeId" style={{ display: 'block', marginBottom: 8, fontWeight: 600 }}>Employee ID *</label>
+                    <input
+                      type="text"
+                      id="employeeId"
+                      value={employeeId}
+                      onChange={(e) => setEmployeeId(e.target.value)}
+                      placeholder="e.g., EMP-1024"
+                      required
+                      style={{
+                        width: '100%',
+                        padding: '12px 14px',
+                        borderRadius: 10,
+                        border: '1px solid #E2E8F0',
+                        outline: 'none',
+                        backgroundColor: '#FFFFFF',
+                        color: '#1E293B'
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="department" style={{ display: 'block', marginBottom: 8, fontWeight: 600 }}>Department *</label>
+                    <input
+                      type="text"
+                      id="department"
+                      value={department}
+                      onChange={(e) => setDepartment(e.target.value)}
+                      placeholder="e.g., Engineering"
+                      required
+                      style={{
+                        width: '100%',
+                        padding: '12px 14px',
+                        borderRadius: 10,
+                        border: '1px solid #E2E8F0',
+                        outline: 'none',
+                        backgroundColor: '#FFFFFF',
+                        color: '#1E293B'
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: 16 }}>
+                  <label htmlFor="email" style={{ display: 'block', marginBottom: 8, fontWeight: 600 }}>Email Address</label>
+                  <input
+                    type="email"
+                    id="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    onFocus={() => setEmailFocused(true)}
+                    onBlur={() => setEmailFocused(false)}
+                    placeholder="Enter your email (optional)"
+                    style={{
+                      width: '100%',
+                      padding: '12px 14px',
+                      borderRadius: 10,
+                      border: `1px solid ${emailFocused ? '#3B82F6' : '#E2E8F0'}`,
+                      outline: 'none',
+                      backgroundColor: '#FFFFFF',
+                      color: '#1E293B'
+                    }}
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  onMouseEnter={() => setRegisterHover(true)}
+                  onMouseLeave={() => setRegisterHover(false)}
+                  disabled={isRegistering || !capturedImage || !name.trim() || !employeeId.trim() || !department.trim()}
+                  style={{
+                    width: '100%',
+                    backgroundColor: (isRegistering || !capturedImage || !name.trim()) ? '#93C5FD' : (registerHover ? '#2563EB' : '#3B82F6'),
+                    color: '#FFFFFF',
+                    border: 'none',
+                    borderRadius: 10,
+                    padding: '12px 16px',
+                    fontWeight: 700,
+                    cursor: (isRegistering || !capturedImage || !name.trim() || !employeeId.trim() || !department.trim()) ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  {isRegistering ? 'Registering...' : 'Register Employee'}
+                </button>
+              </form>
+
+              {status && (
+                <div style={{ marginTop: 16, fontSize: 14, color: status.includes('✅') ? '#166534' : (status.includes('📸') || status.includes('🔄') ? '#334155' : '#B91C1C') }}>
+                  {status}
+                </div>
               )}
-            </button>
-          </form>
-        </div>
-      </div>
 
-      {status && (
-        <div className={`status-message ${
-          status.includes('✅') ? 'status-success' : 
-          status.includes('📸') || status.includes('🔄') ? 'status-info' : 'status-error'
-        }`}>
-          {status}
+              <div style={{ marginTop: 24 }}>
+                <h4 style={{ margin: 0, marginBottom: 8, fontWeight: 700, color: '#1E293B' }}>Employee Registration Guidelines</h4>
+                <ul style={{ listStyle: 'none', padding: 0, margin: 0, color: '#64748B' }}>
+                  <li style={{ marginBottom: 6 }}>• Ensure good lighting on your face</li>
+                  <li style={{ marginBottom: 6 }}>• Only one person should be visible</li>
+                  <li style={{ marginBottom: 6 }}>• Look directly at the camera</li>
+                  <li style={{ marginBottom: 6 }}>• Keep a neutral expression</li>
+                  <li style={{ marginBottom: 0 }}>• Maintain appropriate distance</li>
+                </ul>
+              </div>
+            </div>
+          </div>
         </div>
-      )}
-
-      <div style={{ marginTop: '30px', opacity: 0.8 }}>
-        <h4>📋 Registration Guidelines:</h4>
-        <ul style={{ textAlign: 'left', maxWidth: '600px', margin: '0 auto' }}>
-          <li>🔆 Ensure good lighting on your face</li>
-          <li>👤 Make sure only one person is visible in the photo</li>
-          <li>👀 Look directly at the camera</li>
-          <li>😊 Keep a neutral expression</li>
-          <li>📏 Maintain appropriate distance from camera</li>
-        </ul>
       </div>
     </div>
   );

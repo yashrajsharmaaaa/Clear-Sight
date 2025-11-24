@@ -4,28 +4,60 @@ from PIL import Image
 import base64
 import io
 import os
-
-# Try to import face_recognition, fallback to OpenCV-only if not available
-try:
-    import face_recognition
-    FACE_RECOGNITION_AVAILABLE = True
-    print("face_recognition library available - using advanced recognition")
-except ImportError:
-    FACE_RECOGNITION_AVAILABLE = False
-    print("face_recognition library not available - using OpenCV-based recognition")
+import time
 
 class FaceProcessor:
     def __init__(self):
         # Load OpenCV face cascade
-        self.face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-        # Load eye cascade for better detection
-        self.eye_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_eye.xml')
-        self.use_face_recognition = FACE_RECOGNITION_AVAILABLE
+        self.face_cascade = self._load_cascade('haarcascade_frontalface_default.xml')
+        self.faces_dir = os.path.join(os.path.dirname(__file__), 'static', 'faces')
+        os.makedirs(self.faces_dir, exist_ok=True)
+        # ONNX model via OpenCV DNN
+        self.embedding_net = self._load_embedding_model()
+        self.embedding_input_size = (112, 112)
         
-        if self.use_face_recognition:
-            print("Initialized with face_recognition library")
-        else:
-            print("Initialized with OpenCV-only mode")
+        # Simple cache for processed faces
+        self.face_embeddings_cache = {}
+        
+        # Detection settings
+        self.detection_scale_factor = 1.1
+        self.detection_min_neighbors = 5
+        self.detection_min_size = (30, 30)
+    
+    def _load_cascade(self, cascade_name):
+        """Load cascade classifier with multiple fallback paths"""
+        try:
+            # Primary method - use cv2.data.haarcascades
+            cascade_path = cv2.data.haarcascades + cascade_name  # type: ignore
+            cascade = cv2.CascadeClassifier(cascade_path)
+            if not cascade.empty():
+                return cascade
+        except AttributeError:
+            pass
+        
+        # Fallback methods
+        fallback_paths = [
+            # Standard OpenCV installation paths
+            cascade_name,
+            f'/usr/share/opencv4/haarcascades/{cascade_name}',
+            f'/usr/local/share/opencv4/haarcascades/{cascade_name}',
+            # Windows paths
+            f'C:/opencv/build/etc/haarcascades/{cascade_name}',
+            # Python package paths
+            f'{cv2.__file__.replace("__init__.py", "")}data/haarcascades/{cascade_name}'
+        ]
+        
+        for path in fallback_paths:
+            try:
+                cascade = cv2.CascadeClassifier(path)
+                if not cascade.empty():
+                    return cascade
+            except Exception:
+                continue
+        
+        # If all else fails, create empty classifier and warn
+        print(f"Warning: Could not load {cascade_name}. Face detection may not work properly.")
+        return cv2.CascadeClassifier()
         
     def decode_image(self, image_data):
         """Decode base64 image data to OpenCV format"""
@@ -38,16 +70,52 @@ class FaceProcessor:
             return cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
         except Exception as e:
             raise ValueError(f"Failed to decode image: {str(e)}")
+
+    def _load_embedding_model(self):
+        """Attempt to load an ONNX face embedding model using OpenCV DNN."""
+        try:
+            models_dir = os.path.join(os.path.dirname(__file__), 'models')
+            for name in ['face_embedding.onnx', 'arcface_r100.onnx', 'mobilefacenet.onnx']:
+                path = os.path.join(models_dir, name)
+                if os.path.exists(path):
+                    net = cv2.dnn.readNetFromONNX(path)
+                    return net
+        except Exception:
+            pass
+        return None
     
     def detect_faces(self, image):
-        """Detect faces in image using face_recognition or OpenCV"""
-        if self.use_face_recognition:
-            return self._detect_faces_with_face_recognition(image)
-        else:
-            return self._detect_faces_with_opencv(image)
+        """Detect faces in image using OpenCV with basic caching"""
+        if image is None or image.size == 0:
+            return []
+            
+        # Generate a simple hash of the image for caching
+        image_hash = hash(image.tobytes())
+        
+        # Check if we have this image in cache
+        if image_hash in self.face_embeddings_cache and 'faces' in self.face_embeddings_cache[image_hash]:
+            return self.face_embeddings_cache[image_hash]['faces']
+        
+        # Detect faces with OpenCV
+        faces = self._detect_faces_with_opencv(image)
+            
+        # Basic cache implementation
+        self.face_embeddings_cache[image_hash] = {
+            'faces': faces,
+            'timestamp': time.time()
+        }
+        
+        # Keep cache size manageable (simple approach)
+        if len(self.face_embeddings_cache) > 50:  # Reduced cache size
+            self.face_embeddings_cache.clear()
+        
+        return faces
     
     def _detect_faces_with_face_recognition(self, image):
         """Detect faces using face_recognition library"""
+        if not face_recognition:
+            return self._detect_faces_with_opencv(image)
+            
         # Convert BGR to RGB for face_recognition
         rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         
@@ -74,15 +142,15 @@ class FaceProcessor:
         return detected_faces
     
     def _detect_faces_with_opencv(self, image):
-        """Detect faces using OpenCV (fallback method)"""
+        """Detect faces using OpenCV"""
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         
         # Detect faces
         faces = self.face_cascade.detectMultiScale(
             gray,
-            scaleFactor=1.1,
-            minNeighbors=5,
-            minSize=(50, 50),
+            scaleFactor=self.detection_scale_factor,
+            minNeighbors=self.detection_min_neighbors,
+            minSize=self.detection_min_size,
             flags=cv2.CASCADE_SCALE_IMAGE
         )
         
@@ -91,52 +159,60 @@ class FaceProcessor:
             # Extract face region
             face_roi = gray[y:y+h, x:x+w]
             
-            # Detect eyes in face region for validation
-            eyes = self.eye_cascade.detectMultiScale(face_roi, 1.1, 3)
-            
-            # Only include faces with detected eyes (better quality)
-            confidence = 0.8 if len(eyes) >= 2 else 0.6
-            
             detected_faces.append({
                 'x': int(x),
                 'y': int(y),
                 'width': int(w),
                 'height': int(h),
-                'confidence': confidence,
                 'face_image': face_roi
             })
         
         return detected_faces
     
     def extract_face_features(self, face_image):
-        """Extract features from face image using face_recognition or OpenCV"""
-        if self.use_face_recognition:
-            return self._extract_features_with_face_recognition(face_image)
+        """Extract features from face image using ONNX or OpenCV"""
+        # Prefer ONNX embedding model if available
+        if self.embedding_net is not None:
+            return self._extract_features_with_onnx(face_image)
         else:
             return self._extract_features_with_opencv(face_image)
-    
-    def _extract_features_with_face_recognition(self, face_image):
-        """Extract face encoding using face_recognition library"""
+
+    def _extract_features_with_onnx(self, face_image):
+        """Extract face embeddings using an ONNX model via OpenCV DNN."""
         try:
-            # Convert grayscale to RGB if needed
+            if face_image is None or face_image.size == 0:
+                return self._extract_features_with_opencv(face_image)
+                
+            # Generate a hash for the face image for caching
+            face_hash = hash(face_image.tobytes())
+            
+            # Check if we have this face embedding in cache
+            if face_hash in self.face_embeddings_cache and 'embedding' in self.face_embeddings_cache[face_hash]:
+                return self.face_embeddings_cache[face_hash]['embedding']
+                
+            # Ensure grayscale to RGB and resize to model input
             if len(face_image.shape) == 2:
-                face_rgb = cv2.cvtColor(face_image, cv2.COLOR_GRAY2RGB)
+                rgb = cv2.cvtColor(face_image, cv2.COLOR_GRAY2RGB)
             else:
-                face_rgb = cv2.cvtColor(face_image, cv2.COLOR_BGR2RGB)
+                rgb = cv2.cvtColor(face_image, cv2.COLOR_BGR2RGB)
+            rgb = cv2.resize(rgb, self.embedding_input_size)
+            blob = cv2.dnn.blobFromImage(rgb, scalefactor=1/255.0, size=self.embedding_input_size)
+            self.embedding_net.setInput(blob)
+            emb = self.embedding_net.forward()
+            emb = emb.reshape(-1)
+            result = emb.astype(np.float32).tolist()
             
-            # Get face encodings
-            encodings = face_recognition.face_encodings(face_rgb)
+            # Cache the embedding
+            self.face_embeddings_cache[face_hash] = {
+                'embedding': result,
+                'timestamp': time.time()
+            }
             
-            if len(encodings) > 0:
-                return encodings[0].tolist()
-            else:
-                # Fallback to OpenCV method if no encoding found
-                return self._extract_features_with_opencv(cv2.cvtColor(face_rgb, cv2.COLOR_RGB2GRAY))
-        
-        except Exception as e:
-            # Fallback to OpenCV method on error
-            gray_face = face_image if len(face_image.shape) == 2 else cv2.cvtColor(face_image, cv2.COLOR_BGR2GRAY)
-            return self._extract_features_with_opencv(gray_face)
+            return result
+        except Exception:
+            return self._extract_features_with_opencv(face_image)
+    
+
     
     def _extract_features_with_opencv(self, face_image):
         """Extract basic features from face image for recognition (fallback method)"""
@@ -206,6 +282,10 @@ class FaceProcessor:
         num_bins = 9
         height, width = image.shape
         
+        if height < cell_size or width < cell_size:
+            # Return zero features for very small images
+            return np.zeros(64, dtype=np.float32)
+        
         hog_features = []
         
         for i in range(0, height - cell_size, cell_size):
@@ -225,22 +305,7 @@ class FaceProcessor:
     
     def compare_faces(self, features1, features2):
         """Compare two face feature vectors"""
-        if self.use_face_recognition and len(features1) == 128 and len(features2) == 128:
-            # Use face_recognition's distance calculation for face encodings
-            return self._compare_face_encodings(features1, features2)
-        else:
-            # Use OpenCV-based comparison
-            return self._compare_opencv_features(features1, features2)
-    
-    def _compare_face_encodings(self, encoding1, encoding2):
-        """Compare face encodings using face_recognition library"""
-        try:
-            distance = face_recognition.face_distance([np.array(encoding1)], np.array(encoding2))[0]
-            # Convert distance to similarity (lower distance = higher similarity)
-            similarity = 1.0 - distance
-            return float(max(0.0, similarity))
-        except Exception as e:
-            return self._compare_opencv_features(encoding1, encoding2)
+        return self._compare_opencv_features(features1, features2)
     
     def _compare_opencv_features(self, features1, features2):
         """Compare feature vectors using cosine similarity"""
@@ -270,8 +335,52 @@ class FaceProcessor:
     def save_face_image(self, face_image, filename):
         """Save face image to disk"""
         try:
-            filepath = os.path.join('static/faces', filename)
+            filepath = os.path.join(self.faces_dir, filename)
             cv2.imwrite(filepath, face_image)
             return filepath
         except Exception as e:
             raise ValueError(f"Failed to save image: {str(e)}")
+
+    def assess_face_quality(self, face_image):
+        """Compute simple quality metrics (sharpness and brightness)."""
+        try:
+            gray = face_image if len(face_image.shape) == 2 else cv2.cvtColor(face_image, cv2.COLOR_BGR2GRAY)
+            # Sharpness via Laplacian variance
+            lap = cv2.Laplacian(gray, cv2.CV_64F)
+            sharpness = float(lap.var())
+            # Brightness via mean intensity
+            brightness = float(np.mean(gray))
+            return {
+                'sharpness': sharpness,
+                'brightness': brightness
+            }
+        except Exception:
+            return {
+                'sharpness': 0.0,
+                'brightness': 0.0
+            }
+            
+    def clear_cache(self, max_age_seconds=3600):
+        """Clear old entries from the cache"""
+        import time
+        current_time = time.time()
+        keys_to_remove = []
+        
+        for key, value in self.face_embeddings_cache.items():
+            if current_time - value['timestamp'] > max_age_seconds:
+                keys_to_remove.append(key)
+                
+        for key in keys_to_remove:
+            del self.face_embeddings_cache[key]
+            
+        return len(keys_to_remove)
+        
+    def get_cache_stats(self):
+        """Return cache statistics"""
+        return {
+            'cache_size': len(self.face_embeddings_cache)
+        }
+        
+    def clear_cache(self, max_age_seconds=None):
+        """Clear the cache"""
+        self.face_embeddings_cache.clear()

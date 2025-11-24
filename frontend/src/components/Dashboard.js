@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import apiService from '../services/api';
 
 const Dashboard = () => {
@@ -10,48 +10,64 @@ const Dashboard = () => {
     totalUsers: 0,
     totalRecognitions: 0,
     avgConfidence: 0,
-    recentActivity: 0,
     successRate: 0,
-    mostActiveUsers: [],
-    systemUptime: 'Unknown',
-    faceDetectionMode: 'Unknown'
+    mostActiveUsers: []
   });
 
-  useEffect(() => {
-    loadDashboardData();
-  }, []);
-
-  const loadDashboardData = async () => {
-    setLoading(true);
-    try {
-      const [usersResponse, logsResponse, statsResponse] = await Promise.all([
-        apiService.getUsers(),
-        apiService.getLogs(),
-        apiService.getSystemStats()
-      ]);
-
-      setUsers(usersResponse.users || []);
-      setLogs(logsResponse.logs || []);
-      setStats(statsResponse);
-
-    } catch (error) {
-      console.error('Error loading dashboard data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const formatDate = (dateString) => {
+  // Memoized format functions
+  const formatDate = useCallback((dateString) => {
     try {
       return new Date(dateString).toLocaleString();
     } catch {
       return dateString;
     }
-  };
+  }, []);
 
-  const formatConfidence = (confidence) => {
+  const formatConfidence = useCallback((confidence) => {
     return Math.round(confidence * 100);
-  };
+  }, []);
+
+  // Memoized load function with debounced API calls
+  const loadDashboardData = useCallback(async () => {
+    setLoading(true);
+    
+    // Track loading state for each data type
+    let loadingStates = {
+      users: true,
+      logs: true,
+      stats: true
+    };
+    
+    // Update loading state when all data is loaded
+    const updateLoadingState = () => {
+      if (!loadingStates.users && !loadingStates.logs && !loadingStates.stats) {
+        setLoading(false);
+      }
+    };
+    
+    // Use debounced methods for better performance
+    apiService.debouncedGetUsers((data, error) => {
+      if (!error) setUsers(data.users || []);
+      loadingStates.users = false;
+      updateLoadingState();
+    });
+    
+    apiService.debouncedGetLogs((data, error) => {
+      if (!error) setLogs(data.logs || []);
+      loadingStates.logs = false;
+      updateLoadingState();
+    });
+    
+    apiService.debouncedGetStats((data, error) => {
+      if (!error) setStats(data);
+      loadingStates.stats = false;
+      updateLoadingState();
+    });
+  }, []);
+
+  useEffect(() => {
+    loadDashboardData();
+  }, [loadDashboardData]);
 
   if (loading) {
     return (
@@ -72,7 +88,7 @@ const Dashboard = () => {
       {/* Statistics Cards */}
       <div className="stats-grid" style={{ 
         display: 'grid', 
-        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
+        gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', 
         gap: '20px', 
         marginBottom: '30px' 
       }}>
@@ -112,18 +128,6 @@ const Dashboard = () => {
         </div>
         
         <div className="stat-card" style={{ 
-          background: 'rgba(156, 39, 176, 0.2)', 
-          border: '1px solid rgba(156, 39, 176, 0.4)',
-          borderRadius: '15px',
-          padding: '20px',
-          textAlign: 'center'
-        }}>
-          <h3 style={{ margin: '0 0 10px 0', color: '#9c27b0' }}>⚡ Recent Activity</h3>
-          <p style={{ fontSize: '2em', fontWeight: 'bold', margin: 0 }}>{stats.recentActivity}</p>
-          <small style={{ opacity: 0.8 }}>Last 24 hours</small>
-        </div>
-        
-        <div className="stat-card" style={{ 
           background: 'rgba(76, 175, 80, 0.2)', 
           border: '1px solid rgba(76, 175, 80, 0.4)',
           borderRadius: '15px',
@@ -134,50 +138,39 @@ const Dashboard = () => {
           <p style={{ fontSize: '2em', fontWeight: 'bold', margin: 0 }}>{stats.successRate}%</p>
           <small style={{ opacity: 0.8 }}>High confidence</small>
         </div>
-        
-        <div className="stat-card" style={{ 
-          background: 'rgba(255, 87, 34, 0.2)', 
-          border: '1px solid rgba(255, 87, 34, 0.4)',
-          borderRadius: '15px',
-          padding: '20px',
-          textAlign: 'center'
-        }}>
-          <h3 style={{ margin: '0 0 10px 0', color: '#ff5722' }}>🔧 Detection Mode</h3>
-          <p style={{ fontSize: '1.2em', fontWeight: 'bold', margin: 0 }}>{stats.faceDetectionMode}</p>
-          <small style={{ opacity: 0.8 }}>Current system</small>
-        </div>
       </div>
 
       {/* Tab Navigation */}
-      <div className="tab-navigation" style={{ marginBottom: '20px' }}>
+      <div className="tab-navigation" style={{ marginBottom: '20px', display: 'flex', justifyContent: 'center' }}>
         <button 
           className={`btn ${activeTab === 'users' ? 'btn-primary' : 'btn-warning'}`}
           onClick={() => setActiveTab('users')}
-          style={{ marginRight: '10px' }}
+          style={{ marginRight: '10px', padding: '10px 20px', fontSize: '1.1em' }}
         >
-          👥 Registered Users ({users.length})
+          👥 Users ({users.length})
         </button>
         <button 
           className={`btn ${activeTab === 'logs' ? 'btn-primary' : 'btn-warning'}`}
           onClick={() => setActiveTab('logs')}
+          style={{ padding: '10px 20px', fontSize: '1.1em' }}
         >
-          📋 Recognition Logs ({logs.length})
+          📋 Logs ({logs.length})
         </button>
       </div>
 
       {/* Users Tab */}
       {activeTab === 'users' && (
         <div className="users-section">
-          <h3>👥 Registered Users</h3>
+          <h3 style={{ textAlign: 'center', marginBottom: '20px' }}>👥 Registered Users</h3>
           {users.length === 0 ? (
-            <div className="status-message status-info">
+            <div className="status-message status-info" style={{ textAlign: 'center', padding: '20px', background: 'rgba(33, 150, 243, 0.1)', borderRadius: '10px' }}>
               <p>No users registered yet. Go to the Registration page to add users.</p>
             </div>
           ) : (
-            <div className="users-grid">
+            <div className="users-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
               {users.map((user) => (
-                <div key={user.id} className="user-card">
-                  <h4>👤 {user.name}</h4>
+                <div key={user.id} className="user-card" style={{ background: 'rgba(255, 255, 255, 0.05)', borderRadius: '10px', padding: '15px', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}>
+                  <h4 style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '10px', marginBottom: '10px' }}>👤 {user.name}</h4>
                   {user.email && <p>📧 {user.email}</p>}
                   <p>🆔 <strong>ID:</strong> {user.id}</p>
                   <p>📅 <strong>Registered:</strong> {formatDate(user.created_at)}</p>
@@ -191,15 +184,15 @@ const Dashboard = () => {
       {/* Logs Tab */}
       {activeTab === 'logs' && (
         <div className="logs-section">
-          <h3>📋 Recognition Logs</h3>
+          <h3 style={{ textAlign: 'center', marginBottom: '20px' }}>📋 Recognition Logs</h3>
           {logs.length === 0 ? (
-            <div className="status-message status-info">
+            <div className="status-message status-info" style={{ textAlign: 'center', padding: '20px', background: 'rgba(33, 150, 243, 0.1)', borderRadius: '10px' }}>
               <p>No recognition events logged yet. Use the Recognition page to identify users.</p>
             </div>
           ) : (
-            <div className="logs-container">
+            <div className="logs-container" style={{ maxHeight: '500px', overflowY: 'auto', padding: '10px', borderRadius: '10px', background: 'rgba(255, 255, 255, 0.03)' }}>
               {logs.map((log, index) => (
-                <div key={index} className="log-entry">
+                <div key={index} className="log-entry" style={{ padding: '12px', marginBottom: '10px', borderRadius: '8px', background: 'rgba(255, 255, 255, 0.05)', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
                     <div>
                       <strong>👤 {log.user_name}</strong>
@@ -207,7 +200,7 @@ const Dashboard = () => {
                     </div>
                     <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
                       <span style={{ 
-                        background: 'rgba(76, 175, 80, 0.2)', 
+                        background: log.confidence > 0.7 ? 'rgba(76, 175, 80, 0.2)' : 'rgba(255, 152, 0, 0.2)', 
                         padding: '4px 8px', 
                         borderRadius: '8px',
                         fontSize: '0.9em'
@@ -228,16 +221,17 @@ const Dashboard = () => {
 
       {/* Most Active Users Section */}
       {stats.mostActiveUsers && stats.mostActiveUsers.length > 0 && (
-        <div style={{ marginTop: '30px' }}>
-          <h3>🏆 Most Active Users</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginTop: '15px' }}>
+        <div style={{ marginTop: '30px', marginBottom: '30px' }}>
+          <h3 style={{ textAlign: 'center', marginBottom: '20px' }}>🏆 Most Active Users</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '15px', marginTop: '15px' }}>
             {stats.mostActiveUsers.map(([userName, count], index) => (
               <div key={userName} style={{ 
-                background: 'rgba(255, 255, 255, 0.1)', 
+                background: index === 0 ? 'rgba(255, 215, 0, 0.1)' : 'rgba(255, 255, 255, 0.05)', 
                 borderRadius: '10px', 
                 padding: '15px', 
                 textAlign: 'center',
-                border: '1px solid rgba(255, 255, 255, 0.2)'
+                border: index === 0 ? '1px solid rgba(255, 215, 0, 0.3)' : '1px solid rgba(255, 255, 255, 0.1)',
+                boxShadow: '0 2px 5px rgba(0,0,0,0.1)'
               }}>
                 <h4 style={{ margin: '0 0 5px 0' }}>#{index + 1} {userName}</h4>
                 <p style={{ margin: 0, fontSize: '1.2em', fontWeight: 'bold' }}>{count} recognitions</p>
@@ -253,6 +247,7 @@ const Dashboard = () => {
           className="btn btn-primary" 
           onClick={loadDashboardData}
           disabled={loading}
+          style={{ padding: '10px 20px', fontSize: '1.1em' }}
         >
           {loading ? (
             <>
@@ -281,17 +276,10 @@ const Dashboard = () => {
               console.error('Export failed:', error);
             }
           }}
+          style={{ padding: '10px 20px', fontSize: '1.1em' }}
         >
           📊 Export Logs
         </button>
-      </div>
-
-      {/* System Info */}
-      <div style={{ marginTop: '30px', opacity: 0.8, textAlign: 'center' }}>
-        <h4>ℹ️ System Information</h4>
-        <p>Clear Sight Facial Recognition System v1.0</p>
-        <p>Backend: Python Flask + OpenCV | Frontend: React</p>
-        <p>Last updated: {new Date().toLocaleString()}</p>
       </div>
     </div>
   );

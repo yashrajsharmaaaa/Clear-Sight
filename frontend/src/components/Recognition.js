@@ -1,75 +1,49 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import Webcam from 'react-webcam';
 import apiService from '../services/api';
 
 const Recognition = () => {
   const webcamRef = useRef(null);
   const [isRecognizing, setIsRecognizing] = useState(false);
-  const [autoRecognition, setAutoRecognition] = useState(false);
   const [recognitionResult, setRecognitionResult] = useState(null);
   const [status, setStatus] = useState('');
-  const [lastRecognitionTime, setLastRecognitionTime] = useState(0);
 
+  // Simple video constraints
   const videoConstraints = {
     width: 640,
     height: 480,
     facingMode: "user"
   };
 
-  const recognizeFace = useCallback(async () => {
-    const imageSrc = webcamRef.current.getScreenshot();
-    if (imageSrc && !isRecognizing) {
-      setIsRecognizing(true);
-      setStatus('🔍 Recognizing face...');
-      
-      try {
-        const result = await apiService.recognizeFace(imageSrc);
-        setRecognitionResult(result);
-        setLastRecognitionTime(Date.now());
-        
-        if (result.recognized) {
-          setStatus(`✅ Welcome back, ${result.user.name}! (Confidence: ${Math.round(result.confidence * 100)}%)`);
-        } else {
-          setStatus('❌ Face not recognized. Please register first or try again.');
-        }
-      } catch (error) {
-        console.error('Recognition error:', error);
-        setStatus('❌ Error connecting to server');
-      } finally {
-        setIsRecognizing(false);
-      }
-    }
-  }, [webcamRef, isRecognizing]);
-
-  // Auto-recognition effect
-  useEffect(() => {
-    let interval;
-    if (autoRecognition) {
-      interval = setInterval(() => {
-        const now = Date.now();
-        // Only recognize every 3 seconds to avoid overwhelming the server
-        if (now - lastRecognitionTime > 3000) {
-          recognizeFace();
-        }
-      }, 3000);
-    }
+  // Simple recognition function
+  const recognizeFace = async () => {
+    if (!webcamRef.current || isRecognizing) return;
     
-    return () => {
-      if (interval) {
-        clearInterval(interval);
-      }
-    };
-  }, [autoRecognition, recognizeFace, lastRecognitionTime]);
+    const imageSrc = webcamRef.current.getScreenshot();
+    if (!imageSrc) return;
+    
+    setIsRecognizing(true);
+    setStatus('🔍 Recognizing face...');
+    
+    try {
+      const result = await apiService.recognizeFace(imageSrc);
+      setRecognitionResult(result);
 
-  const toggleAutoRecognition = () => {
-    setAutoRecognition(!autoRecognition);
-    if (!autoRecognition) {
-      setStatus('🔄 Auto-recognition enabled');
-    } else {
-      setStatus('⏸️ Auto-recognition disabled');
+      
+      if (result.recognized) {
+        setStatus(`✅ Welcome back, ${result.user.name}! (Confidence: ${Math.round(result.confidence * 100)}%)`);
+      } else {
+        setStatus('❌ Face not recognized. Please register first or try again.');
+      }
+    } catch (error) {
+      console.error('Recognition error:', error);
+      setStatus('❌ Error connecting to server');
+    } finally {
+      setIsRecognizing(false);
     }
   };
 
+  // Simple clear function
   const clearResults = () => {
     setRecognitionResult(null);
     setStatus('');
@@ -122,13 +96,7 @@ const Recognition = () => {
           )}
         </button>
         
-        <button 
-          className={`btn ${autoRecognition ? 'btn-warning' : 'btn-success'}`}
-          onClick={toggleAutoRecognition}
-          disabled={isRecognizing}
-        >
-          {autoRecognition ? '⏸️ Stop Auto-Recognition' : '🔄 Start Auto-Recognition'}
-        </button>
+
         
         {recognitionResult && (
           <button 

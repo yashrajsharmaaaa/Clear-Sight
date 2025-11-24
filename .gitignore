@@ -27,6 +27,8 @@ build/
 .env.development.local
 .env.test.local
 .env.production.local
+backend/.env
+frontend/.env
 
 # Database files
 *.db
@@ -67,3 +69,14 @@ backup_*
 
 # Production deployment files
 *.pid
+
+# Kiro specs (development only)
+.kiro/
+
+# Deployment documentation (keep only essential)
+VERCEL_DEPLOYMENT.md
+VERCEL_ONLY_DEPLOYMENT.md
+coderabbit-review.md
+
+# CodeRabbit config (optional)
+.coderabbit.yaml

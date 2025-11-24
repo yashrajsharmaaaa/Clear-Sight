@@ -1,60 +1,70 @@
-import React, { useState } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
-import Camera from './components/Camera';
-import Registration from './components/Registration';
-import Recognition from './components/Recognition';
-import Dashboard from './components/Dashboard';
+import React, { useState, lazy, Suspense } from 'react';
 import './App.css';
 
+// Implement code splitting with lazy loading
+const Registration = lazy(() => import('./components/Registration'));
+const Recognition = lazy(() => import('./components/Recognition'));
+const Dashboard = lazy(() => import('./components/Dashboard'));
+
+// Loading component
+const LoadingComponent = () => (
+  <div className="loading-container">
+    <div className="loading-spinner"></div>
+    <p>Loading component...</p>
+  </div>
+);
 function App() {
-  const [currentPage, setCurrentPage] = useState('camera');
+  const [currentPage, setCurrentPage] = useState('dashboard');
 
   const renderPage = () => {
     switch (currentPage) {
-      case 'camera':
-        return <Camera />;
       case 'registration':
-        return <Registration />;
+        return (
+          <Suspense fallback={<LoadingComponent />}>
+            <Registration />
+          </Suspense>
+        );
       case 'recognition':
-        return <Recognition />;
+        return (
+          <Suspense fallback={<LoadingComponent />}>
+            <Recognition />
+          </Suspense>
+        );
       case 'dashboard':
-        return <Dashboard />;
       default:
-        return <Camera />;
+        return (
+          <Suspense fallback={<LoadingComponent />}>
+            <Dashboard />
+          </Suspense>
+        );
     }
   };
 
   return (
     <div className="App">
       <header className="App-header">
-        <h1>🔍 Clear Sight</h1>
-        <p>Advanced Facial Recognition System</p>
+        <h1>👤 Employee Attendance</h1>
+        <p>Facial Recognition Attendance System</p>
       </header>
 
       <nav className="nav-bar">
         <button 
-          className={currentPage === 'camera' ? 'nav-btn active' : 'nav-btn'}
-          onClick={() => setCurrentPage('camera')}
-        >
-          📷 Camera
-        </button>
-        <button 
           className={currentPage === 'registration' ? 'nav-btn active' : 'nav-btn'}
           onClick={() => setCurrentPage('registration')}
         >
-          ➕ Register
+          ➕ Employee Registration
         </button>
         <button 
           className={currentPage === 'recognition' ? 'nav-btn active' : 'nav-btn'}
           onClick={() => setCurrentPage('recognition')}
         >
-          🔍 Recognize
+          🔍 Live Recognition
         </button>
         <button 
           className={currentPage === 'dashboard' ? 'nav-btn active' : 'nav-btn'}
           onClick={() => setCurrentPage('dashboard')}
         >
-          📊 Dashboard
+          📊 Attendance Dashboard
         </button>
       </nav>
 
