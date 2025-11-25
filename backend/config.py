@@ -110,3 +110,30 @@ def get_cors_config():
         'origins': get_cors_origins(),
         'supports_credentials': False,
     }
+
+
+def get_recognition_config():
+    """
+    Get face recognition configuration parameters from environment variables.
+    
+    Returns:
+        dict: Configuration dictionary with keys:
+            - similarity_threshold: Minimum similarity score for face match (0.0-1.0)
+            - min_face_size: Minimum face size in pixels for detection
+            - max_face_size: Maximum face size in pixels for detection
+            - feature_dimension: Dimension of feature vectors
+            - use_preprocessing: Whether to apply preprocessing to faces
+            - min_sharpness: Minimum sharpness threshold for quality assessment
+            - min_brightness: Minimum brightness threshold for quality assessment
+            - max_brightness: Maximum brightness threshold for quality assessment
+    """
+    return {
+        'similarity_threshold': float(os.environ.get('SIMILARITY_THRESHOLD', '0.65')),
+        'min_face_size': int(os.environ.get('MIN_FACE_SIZE', '80')),
+        'max_face_size': int(os.environ.get('MAX_FACE_SIZE', '400')),
+        'feature_dimension': int(os.environ.get('FEATURE_DIMENSION', '512')),
+        'use_preprocessing': os.environ.get('USE_PREPROCESSING', 'true').lower() == 'true',
+        'min_sharpness': float(os.environ.get('MIN_SHARPNESS', '40.0')),
+        'min_brightness': float(os.environ.get('MIN_BRIGHTNESS', '70.0')),
+        'max_brightness': float(os.environ.get('MAX_BRIGHTNESS', '190.0')),
+    }

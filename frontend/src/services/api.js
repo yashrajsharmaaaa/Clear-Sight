@@ -182,12 +182,17 @@ class ApiService {
     }
   }
 
-  // Face recognition (clears logs cache)
+  // Face recognition with improved error handling for continuous operation
   async recognizeFace(imageData) {
     try {
       if (!imageData || !imageData.includes('base64')) {
         console.error('Invalid image data format for recognition');
-        throw new Error('Invalid image data format');
+        // Return structured error instead of throwing
+        return {
+          recognized: false,
+          error: 'Invalid image data format',
+          message: 'Invalid image data. Please try again.'
+        };
       }
       
       console.log('Sending recognition request to:', API_BASE_URL + '/api/recognize');
@@ -199,8 +204,21 @@ class ApiService {
       this.cache.delete('stats'); // Clear stats cache
       return response.data;
     } catch (error) {
-      console.error('Recognition error details:', error);
-      throw error;
+      // Enhanced error logging for debugging
+      console.error('Recognition error details:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status
+      });
+      
+      // Return structured error response instead of throwing
+      // This ensures the auto-recognition loop continues
+      return {
+        recognized: false,
+        error: error.response?.data?.error || error.message || 'Recognition failed',
+        message: error.response?.data?.message || 'Face recognition failed. Please try again.',
+        status: error.response?.status
+      };
     }
   }
 

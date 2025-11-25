@@ -5,9 +5,13 @@ import base64
 import io
 import os
 import time
+from config import get_recognition_config
 
 class FaceProcessor:
     def __init__(self):
+        # Load configuration
+        self.config = get_recognition_config()
+        
         # Load OpenCV face cascade
         self.face_cascade = self._load_cascade('haarcascade_frontalface_default.xml')
         self.faces_dir = os.path.join(os.path.dirname(__file__), 'static', 'faces')
@@ -19,10 +23,17 @@ class FaceProcessor:
         # Simple cache for processed faces
         self.face_embeddings_cache = {}
         
-        # Detection settings
+        # Detection settings - use configured values
         self.detection_scale_factor = 1.1
         self.detection_min_neighbors = 5
-        self.detection_min_size = (30, 30)
+        self.detection_min_size = (self.config['min_face_size'], self.config['min_face_size'])
+        
+        # Recognition thresholds from configuration
+        self.similarity_threshold = self.config['similarity_threshold']
+        self.min_sharpness = self.config['min_sharpness']
+        self.min_brightness = self.config['min_brightness']
+        self.max_brightness = self.config['max_brightness']
+        self.use_preprocessing = self.config['use_preprocessing']
     
     def _load_cascade(self, cascade_name):
         """Load cascade classifier with multiple fallback paths"""
@@ -83,6 +94,34 @@ class FaceProcessor:
         except Exception:
             pass
         return None
+    
+    def preprocess_face(self, face_image):
+        """
+        Apply preprocessing to normalize face image
+        - Histogram equalization for lighting normalization
+        - Gaussian blur for noise reduction
+        - Resize to standard dimensions
+        """
+        try:
+            # Convert to grayscale if needed
+            if len(face_image.shape) == 3:
+                gray = cv2.cvtColor(face_image, cv2.COLOR_BGR2GRAY)
+            else:
+                gray = face_image
+            
+            # Apply CLAHE (Contrast Limited Adaptive Histogram Equalization)
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            normalized = clahe.apply(gray)
+            
+            # Slight Gaussian blur to reduce noise
+            denoised = cv2.GaussianBlur(normalized, (3, 3), 0)
+            
+            return denoised
+        except Exception as e:
+            # If preprocessing fails, return original image
+            if len(face_image.shape) == 3:
+                return cv2.cvtColor(face_image, cv2.COLOR_BGR2GRAY)
+            return face_image
     
     def detect_faces(self, image):
         """Detect faces in image using OpenCV with basic caching"""
@@ -170,12 +209,15 @@ class FaceProcessor:
         return detected_faces
     
     def extract_face_features(self, face_image):
-        """Extract features from face image using ONNX or OpenCV"""
+        """Extract features from face image using ONNX or OpenCV with preprocessing"""
+        # Apply preprocessing to normalize face image
+        preprocessed = self.preprocess_face(face_image)
+        
         # Prefer ONNX embedding model if available
         if self.embedding_net is not None:
-            return self._extract_features_with_onnx(face_image)
+            return self._extract_features_with_onnx(preprocessed)
         else:
-            return self._extract_features_with_opencv(face_image)
+            return self._extract_features_with_opencv(preprocessed)
 
     def _extract_features_with_onnx(self, face_image):
         """Extract face embeddings using an ONNX model via OpenCV DNN."""
@@ -215,7 +257,7 @@ class FaceProcessor:
 
     
     def _extract_features_with_opencv(self, face_image):
-        """Extract basic features from face image for recognition (fallback method)"""
+        """Extract enhanced features from face image for recognition (fallback method)"""
         try:
             # Resize face to standard size
             face_resized = cv2.resize(face_image, (100, 100))
@@ -223,23 +265,31 @@ class FaceProcessor:
             # Apply histogram equalization for better feature extraction
             face_eq = cv2.equalizeHist(face_resized)
             
-            # Extract LBP (Local Binary Pattern) features
+            # Extract LBP (Local Binary Pattern) features with 512 bins
             lbp_features = self._extract_lbp_features(face_eq)
             
-            # Extract HOG (Histogram of Oriented Gradients) features
+            # Extract multi-scale HOG (Histogram of Oriented Gradients) features
             hog_features = self._extract_hog_features(face_eq)
             
-            # Combine features
-            features = np.concatenate([lbp_features, hog_features])
+            # Weighted feature fusion (0.6 LBP + 0.4 HOG)
+            # Normalize each feature type first
+            lbp_normalized = lbp_features / (np.linalg.norm(lbp_features) + 1e-6)
+            hog_normalized = hog_features / (np.linalg.norm(hog_features) + 1e-6)
+            
+            # Apply weights and combine
+            lbp_weighted = lbp_normalized * 0.6
+            hog_weighted = hog_normalized * 0.4
+            
+            features = np.concatenate([lbp_weighted, hog_weighted])
             
             return features.tolist()
         
         except Exception as e:
             raise ValueError(f"Failed to extract features: {str(e)}")    
     def _extract_lbp_features(self, image):
-        """Extract Local Binary Pattern features"""
+        """Extract Local Binary Pattern features with increased bins (512)"""
         height, width = image.shape
-        lbp_image = np.zeros((height, width), dtype=np.uint8)
+        lbp_image = np.zeros((height, width), dtype=np.uint16)  # Use uint16 for more bins
         
         for i in range(1, height - 1):
             for j in range(1, width - 1):
@@ -259,15 +309,15 @@ class FaceProcessor:
                 
                 lbp_image[i, j] = pattern
         
-        # Create histogram of LBP patterns
-        hist, _ = np.histogram(lbp_image.ravel(), bins=256, range=(0, 256))
+        # Create histogram of LBP patterns with 512 bins for better discrimination
+        hist, _ = np.histogram(lbp_image.ravel(), bins=512, range=(0, 512))
         hist = hist.astype(np.float32)
         hist = hist / (hist.sum() + 1e-6)  # Normalize
         
         return hist
     
     def _extract_hog_features(self, image):
-        """Extract Histogram of Oriented Gradients features"""
+        """Extract multi-scale Histogram of Oriented Gradients features"""
         # Calculate gradients
         grad_x = cv2.Sobel(image, cv2.CV_64F, 1, 0, ksize=3)
         grad_y = cv2.Sobel(image, cv2.CV_64F, 0, 1, ksize=3)
@@ -277,47 +327,45 @@ class FaceProcessor:
         orientation = np.arctan2(grad_y, grad_x) * 180 / np.pi
         orientation[orientation < 0] += 180
         
-        # Create HOG descriptor
-        cell_size = 8
-        num_bins = 9
         height, width = image.shape
+        num_bins = 9
         
-        if height < cell_size or width < cell_size:
-            # Return zero features for very small images
-            return np.zeros(64, dtype=np.float32)
+        # Multi-scale HOG: 8x8 and 16x16 cells
+        all_hog_features = []
         
-        hog_features = []
+        for cell_size in [8, 16]:
+            if height < cell_size or width < cell_size:
+                # Return zero features for very small images
+                all_hog_features.extend(np.zeros(32, dtype=np.float32))
+                continue
+            
+            hog_features = []
+            
+            for i in range(0, height - cell_size, cell_size):
+                for j in range(0, width - cell_size, cell_size):
+                    cell_mag = magnitude[i:i+cell_size, j:j+cell_size]
+                    cell_ori = orientation[i:i+cell_size, j:j+cell_size]
+                    
+                    # Create histogram for this cell
+                    hist, _ = np.histogram(cell_ori, bins=num_bins, range=(0, 180), weights=cell_mag)
+                    hog_features.extend(hist)
+            
+            # Normalize
+            hog_features = np.array(hog_features, dtype=np.float32)
+            hog_features = hog_features / (np.linalg.norm(hog_features) + 1e-6)
+            
+            # Limit feature vector size per scale
+            all_hog_features.extend(hog_features[:32])
         
-        for i in range(0, height - cell_size, cell_size):
-            for j in range(0, width - cell_size, cell_size):
-                cell_mag = magnitude[i:i+cell_size, j:j+cell_size]
-                cell_ori = orientation[i:i+cell_size, j:j+cell_size]
-                
-                # Create histogram for this cell
-                hist, _ = np.histogram(cell_ori, bins=num_bins, range=(0, 180), weights=cell_mag)
-                hog_features.extend(hist)
-        
-        # Normalize
-        hog_features = np.array(hog_features, dtype=np.float32)
-        hog_features = hog_features / (np.linalg.norm(hog_features) + 1e-6)
-        
-        return hog_features[:64]  # Limit feature vector size
+        return np.array(all_hog_features, dtype=np.float32)
     
     def compare_faces(self, features1, features2):
-        """Compare two face feature vectors"""
+        """Compare two face feature vectors using enhanced similarity metrics"""
         return self._compare_opencv_features(features1, features2)
     
-    def _compare_opencv_features(self, features1, features2):
-        """Compare feature vectors using cosine similarity"""
+    def _cosine_similarity(self, features1, features2):
+        """Calculate cosine similarity between two feature vectors"""
         try:
-            features1 = np.array(features1)
-            features2 = np.array(features2)
-            
-            # Ensure same length
-            min_len = min(len(features1), len(features2))
-            features1 = features1[:min_len]
-            features2 = features2[:min_len]
-            
             # Calculate cosine similarity
             dot_product = np.dot(features1, features2)
             norm1 = np.linalg.norm(features1)
@@ -327,6 +375,40 @@ class FaceProcessor:
                 return 0.0
             
             similarity = dot_product / (norm1 * norm2)
+            return float(similarity)
+        except Exception:
+            return 0.0
+    
+    def _euclidean_distance(self, features1, features2):
+        """Calculate euclidean distance between two feature vectors"""
+        try:
+            distance = np.linalg.norm(features1 - features2)
+            return float(distance)
+        except Exception:
+            return float('inf')
+    
+    def _compare_opencv_features(self, features1, features2):
+        """Compare feature vectors using weighted combination of cosine similarity and euclidean distance"""
+        try:
+            features1 = np.array(features1)
+            features2 = np.array(features2)
+            
+            # Ensure same length
+            min_len = min(len(features1), len(features2))
+            features1 = features1[:min_len]
+            features2 = features2[:min_len]
+            
+            # Calculate cosine similarity (primary metric)
+            cosine_sim = self._cosine_similarity(features1, features2)
+            
+            # Calculate euclidean distance (secondary metric)
+            euclidean_dist = self._euclidean_distance(features1, features2)
+            # Convert distance to similarity score (inverse relationship)
+            euclidean_sim = 1.0 / (1.0 + euclidean_dist)
+            
+            # Weighted combination (0.7 cosine + 0.3 euclidean)
+            similarity = 0.7 * cosine_sim + 0.3 * euclidean_sim
+            
             return float(similarity)
         
         except Exception as e:
@@ -359,6 +441,25 @@ class FaceProcessor:
                 'sharpness': 0.0,
                 'brightness': 0.0
             }
+    
+    def is_face_quality_acceptable(self, face_image):
+        """
+        Check if face quality meets configured thresholds.
+        
+        Args:
+            face_image: Face image to assess
+            
+        Returns:
+            tuple: (is_acceptable: bool, quality_metrics: dict)
+        """
+        quality = self.assess_face_quality(face_image)
+        
+        is_acceptable = (
+            quality['sharpness'] >= self.min_sharpness and
+            self.min_brightness <= quality['brightness'] <= self.max_brightness
+        )
+        
+        return is_acceptable, quality
             
     def clear_cache(self, max_age_seconds=3600):
         """Clear old entries from the cache"""
