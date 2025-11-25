@@ -28,7 +28,7 @@ CORS(app, resources={r"/*": cors_config}, supports_credentials=False)
 
 # Configuration
 UPLOAD_FOLDER = get_upload_path()
-SIMILARITY_THRESHOLD = 0.7
+SIMILARITY_THRESHOLD = float(os.environ.get('SIMILARITY_THRESHOLD', 0.65))
 MIN_SHARPNESS = float(os.environ.get('MIN_SHARPNESS', 30.0))
 BRIGHTNESS_RANGE = (
     float(os.environ.get('MIN_BRIGHTNESS', 60.0)),

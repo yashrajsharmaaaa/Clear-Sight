@@ -203,6 +203,7 @@ class FaceProcessor:
                 'y': int(y),
                 'width': int(w),
                 'height': int(h),
+                'confidence': 0.85,  # OpenCV cascade detector doesn't provide confidence, use default
                 'face_image': face_roi
             })
         
