@@ -125,30 +125,45 @@ class FaceProcessor:
     
     def detect_faces(self, image):
         """Detect faces in image using OpenCV with basic caching"""
-        if image is None or image.size == 0:
+        try:
+            if image is None or image.size == 0:
+                return []
+                
+            # Generate a simple hash of the image for caching
+            try:
+                image_hash = hash(image.tobytes())
+            except Exception as hash_error:
+                print(f"Error hashing image: {str(hash_error)}")
+                # If hashing fails, skip cache and detect directly
+                return self._detect_faces_with_opencv(image)
+            
+            # Check if we have this image in cache
+            if image_hash in self.face_embeddings_cache and 'faces' in self.face_embeddings_cache[image_hash]:
+                return self.face_embeddings_cache[image_hash]['faces']
+            
+            # Detect faces with OpenCV
+            faces = self._detect_faces_with_opencv(image)
+                
+            # Basic cache implementation
+            try:
+                self.face_embeddings_cache[image_hash] = {
+                    'faces': faces,
+                    'timestamp': time.time()
+                }
+                
+                # Keep cache size manageable (simple approach)
+                if len(self.face_embeddings_cache) > 50:  # Reduced cache size
+                    self.face_embeddings_cache.clear()
+            except Exception as cache_error:
+                print(f"Error caching faces: {str(cache_error)}")
+                # Continue even if caching fails
+            
+            return faces
+        except Exception as e:
+            print(f"Error in detect_faces: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return []
-            
-        # Generate a simple hash of the image for caching
-        image_hash = hash(image.tobytes())
-        
-        # Check if we have this image in cache
-        if image_hash in self.face_embeddings_cache and 'faces' in self.face_embeddings_cache[image_hash]:
-            return self.face_embeddings_cache[image_hash]['faces']
-        
-        # Detect faces with OpenCV
-        faces = self._detect_faces_with_opencv(image)
-            
-        # Basic cache implementation
-        self.face_embeddings_cache[image_hash] = {
-            'faces': faces,
-            'timestamp': time.time()
-        }
-        
-        # Keep cache size manageable (simple approach)
-        if len(self.face_embeddings_cache) > 50:  # Reduced cache size
-            self.face_embeddings_cache.clear()
-        
-        return faces
     
     def _detect_faces_with_face_recognition(self, image):
         """Detect faces using face_recognition library"""
@@ -182,32 +197,62 @@ class FaceProcessor:
     
     def _detect_faces_with_opencv(self, image):
         """Detect faces using OpenCV"""
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        
-        # Detect faces
-        faces = self.face_cascade.detectMultiScale(
-            gray,
-            scaleFactor=self.detection_scale_factor,
-            minNeighbors=self.detection_min_neighbors,
-            minSize=self.detection_min_size,
-            flags=cv2.CASCADE_SCALE_IMAGE
-        )
-        
-        detected_faces = []
-        for (x, y, w, h) in faces:
-            # Extract face region
-            face_roi = gray[y:y+h, x:x+w]
+        try:
+            if image is None or image.size == 0:
+                return []
             
-            detected_faces.append({
-                'x': int(x),
-                'y': int(y),
-                'width': int(w),
-                'height': int(h),
-                'confidence': 0.85,  # OpenCV cascade detector doesn't provide confidence, use default
-                'face_image': face_roi
-            })
-        
-        return detected_faces
+            # Convert to grayscale
+            try:
+                if len(image.shape) == 2:
+                    gray = image
+                else:
+                    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            except Exception as convert_error:
+                print(f"Error converting image to grayscale: {str(convert_error)}")
+                return []
+            
+            # Check if cascade is loaded
+            if self.face_cascade.empty():
+                print("Warning: Face cascade not loaded properly")
+                return []
+            
+            # Detect faces
+            try:
+                faces = self.face_cascade.detectMultiScale(
+                    gray,
+                    scaleFactor=self.detection_scale_factor,
+                    minNeighbors=self.detection_min_neighbors,
+                    minSize=self.detection_min_size,
+                    flags=cv2.CASCADE_SCALE_IMAGE
+                )
+            except Exception as detect_error:
+                print(f"Error in detectMultiScale: {str(detect_error)}")
+                return []
+            
+            detected_faces = []
+            for (x, y, w, h) in faces:
+                try:
+                    # Extract face region
+                    face_roi = gray[y:y+h, x:x+w]
+                    
+                    detected_faces.append({
+                        'x': int(x),
+                        'y': int(y),
+                        'width': int(w),
+                        'height': int(h),
+                        'confidence': 0.85,  # OpenCV cascade detector doesn't provide confidence, use default
+                        'face_image': face_roi
+                    })
+                except Exception as face_error:
+                    print(f"Error processing face at ({x}, {y}, {w}, {h}): {str(face_error)}")
+                    continue
+            
+            return detected_faces
+        except Exception as e:
+            print(f"Unexpected error in _detect_faces_with_opencv: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return []
     
     def extract_face_features(self, face_image):
         """Extract features from face image using ONNX or OpenCV with preprocessing"""
