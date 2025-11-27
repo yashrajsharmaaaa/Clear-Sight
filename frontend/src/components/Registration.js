@@ -13,16 +13,13 @@ const Registration = () => {
   const [status, setStatus] = useState('');
   const [registrationResult, setRegistrationResult] = useState(null);
 
-  const videoConstraints = {
+  const videoConstraints = useCallback(() => ({
     width: 640,
     height: 480,
     facingMode: "user"
-  };
+  }), []);
 
-  const [nameFocused, setNameFocused] = useState(false);
-  const [emailFocused, setEmailFocused] = useState(false);
-  const [captureHover, setCaptureHover] = useState(false);
-  const [registerHover, setRegisterHover] = useState(false);
+
 
   const capturePhoto = useCallback(() => {
     const imageSrc = webcamRef.current.getScreenshot();
@@ -53,19 +50,7 @@ const Registration = () => {
     setStatus('🔄 Registering user...');
 
     try {
-      console.log('Registering user with data:', {
-        name: name.trim(),
-        email: email.trim(),
-        employeeId: employeeId.trim(),
-        department: department.trim(),
-        imageDataLength: capturedImage ? capturedImage.length : 0
-      });
-      
-      // Log the API base URL from the service
-      console.log('Using API service for registration');
-      
       const result = await apiService.registerUser(name.trim(), email.trim(), capturedImage, employeeId.trim(), department.trim());
-      console.log('Registration response:', result);
       setRegistrationResult(result);
       
       if (result.success) {
@@ -84,9 +69,6 @@ const Registration = () => {
         setStatus(`❌ Registration failed: ${result.message || 'Unknown error'}`);
       }
     } catch (error) {
-      console.error('Registration error:', error);
-      console.error('Error details:', error.response ? error.response.data : 'No response data');
-      console.error('Error status:', error.response ? error.response.status : 'No status');
       setStatus(`❌ Error connecting to server: ${error.message || 'Unknown error'}`);
     } finally {
       setIsRegistering(false);
@@ -140,17 +122,11 @@ const Registration = () => {
                 {!capturedImage ? (
                   <button
                     onClick={capturePhoto}
-                    onMouseEnter={() => setCaptureHover(true)}
-                    onMouseLeave={() => setCaptureHover(false)}
+                    className="btn btn-primary"
                     style={{
                       width: '100%',
-                      backgroundColor: captureHover ? '#2563EB' : '#3B82F6',
-                      color: '#FFFFFF',
-                      border: 'none',
-                      borderRadius: 10,
                       padding: '12px 16px',
-                      fontWeight: 600,
-                      cursor: 'pointer'
+                      fontWeight: 600
                     }}
                   >
                     Capture Photo
@@ -158,15 +134,11 @@ const Registration = () => {
                 ) : (
                   <button
                     onClick={retakePhoto}
+                    className="btn btn-warning"
                     style={{
                       width: '100%',
-                      backgroundColor: '#E2E8F0',
-                      color: '#1E293B',
-                      border: 'none',
-                      borderRadius: 10,
                       padding: '12px 16px',
-                      fontWeight: 600,
-                      cursor: 'pointer'
+                      fontWeight: 600
                     }}
                   >
                     Retake Photo
@@ -185,18 +157,12 @@ const Registration = () => {
                     id="name"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    onFocus={() => setNameFocused(true)}
-                    onBlur={() => setNameFocused(false)}
                     placeholder="Enter your full name"
                     required
+                    className="form-group input"
                     style={{
                       width: '100%',
-                      padding: '12px 14px',
-                      borderRadius: 10,
-                      border: `1px solid ${nameFocused ? '#3B82F6' : '#E2E8F0'}`,
-                      outline: 'none',
-                      backgroundColor: '#FFFFFF',
-                      color: '#1E293B'
+                      padding: '12px 14px'
                     }}
                   />
                 </div>
@@ -251,35 +217,24 @@ const Registration = () => {
                     id="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    onFocus={() => setEmailFocused(true)}
-                    onBlur={() => setEmailFocused(false)}
                     placeholder="Enter your email (optional)"
+                    className="form-group input"
                     style={{
                       width: '100%',
-                      padding: '12px 14px',
-                      borderRadius: 10,
-                      border: `1px solid ${emailFocused ? '#3B82F6' : '#E2E8F0'}`,
-                      outline: 'none',
-                      backgroundColor: '#FFFFFF',
-                      color: '#1E293B'
+                      padding: '12px 14px'
                     }}
                   />
                 </div>
 
                 <button
                   type="submit"
-                  onMouseEnter={() => setRegisterHover(true)}
-                  onMouseLeave={() => setRegisterHover(false)}
                   disabled={isRegistering || !capturedImage || !name.trim() || !employeeId.trim() || !department.trim()}
+                  className="btn btn-primary"
                   style={{
                     width: '100%',
-                    backgroundColor: (isRegistering || !capturedImage || !name.trim()) ? '#93C5FD' : (registerHover ? '#2563EB' : '#3B82F6'),
-                    color: '#FFFFFF',
-                    border: 'none',
-                    borderRadius: 10,
                     padding: '12px 16px',
                     fontWeight: 700,
-                    cursor: (isRegistering || !capturedImage || !name.trim() || !employeeId.trim() || !department.trim()) ? 'not-allowed' : 'pointer'
+                    opacity: (isRegistering || !capturedImage || !name.trim() || !employeeId.trim() || !department.trim()) ? 0.6 : 1
                   }}
                 >
                   {isRegistering ? 'Registering...' : 'Register Employee'}

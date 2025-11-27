@@ -2,7 +2,6 @@ import axios from 'axios';
 
 // Use environment variable for API URL or default to localhost:5000
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
-console.log('API Base URL:', API_BASE_URL);
 
 // Create axios instance with optimized settings
 const api = axios.create({
@@ -31,10 +30,7 @@ api.interceptors.request.use(
 
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    console.error('API Error:', error.response?.data?.error || error.message);
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 
 // Debounce function to prevent excessive API calls
@@ -70,13 +66,11 @@ class ApiService {
     const cacheTime = this.cachePriority[key] || this.cacheTimeout;
     
     if (cached && Date.now() - cached.timestamp < cacheTime) {
-      console.log(`Using cached data for ${key}`);
       return cached.data;
     }
     
     // Check if there's already a pending request for this key
     if (this.pendingRequests.has(key)) {
-      console.log(`Joining pending request for ${key}`);
       return this.pendingRequests.get(key);
     }
     
@@ -102,26 +96,15 @@ class ApiService {
   // User registration with improved error handling and cache management
   async registerUser(name, email, imageData, employeeId, department) {
     try {
-      console.log('Sending registration request to:', API_BASE_URL + '/api/register');
-      
       // Validate image data
-      if (!imageData) {
-        console.error('No image data provided');
+      if (!imageData || !imageData.includes('base64')) {
         return {
           success: false,
-          error: 'No image data provided'
+          error: 'Invalid image data'
         };
       }
       
-      if (!imageData.includes('base64')) {
-        console.error('Invalid image data format: missing base64 encoding');
-        return {
-          success: false,
-          error: 'Invalid image data format: Image must be base64 encoded'
-        };
-      }
-      
-      // Send JSON data instead of FormData
+      // Send JSON data
       const requestData = {
         name: name,
         email: email,
@@ -130,10 +113,7 @@ class ApiService {
         image_data: imageData
       };
       
-      console.log('Sending registration data as JSON');
-      
       const response = await api.post('/api/register', requestData);
-      // api instance already has Content-Type: application/json header set
       
       // Clear specific caches after successful registration
       this.clearCache('users');
@@ -141,7 +121,6 @@ class ApiService {
       
       return response.data;
     } catch (error) {
-      console.error('Registration error details:', error);
       return {
         success: false,
         error: error.response?.data?.error || 'Registration failed. Please try again.'
@@ -160,11 +139,8 @@ class ApiService {
         ia[i] = byteString.charCodeAt(i);
       }
       
-      const blob = new Blob([ab], { type: mimeType });
-      console.log('Created blob from base64 data, size:', blob.size, 'bytes');
-      return blob;
+      return new Blob([ab], { type: mimeType });
     } catch (error) {
-      console.error('Error converting base64 to blob:', error);
       throw new Error('Failed to convert image data: ' + error.message);
     }
   }
@@ -173,8 +149,6 @@ class ApiService {
   async recognizeFace(imageData) {
     try {
       if (!imageData || !imageData.includes('base64')) {
-        console.error('Invalid image data format for recognition');
-        // Return structured error instead of throwing
         return {
           recognized: false,
           error: 'Invalid image data format',
@@ -182,23 +156,14 @@ class ApiService {
         };
       }
       
-      console.log('Sending recognition request to:', API_BASE_URL + '/api/recognize');
       const response = await api.post('/api/recognize', {
         image_data: imageData
       });
       
-      this.cache.delete('logs'); // Clear logs cache after recognition
-      this.cache.delete('stats'); // Clear stats cache
+      this.cache.delete('logs');
+      this.cache.delete('stats');
       return response.data;
     } catch (error) {
-      // Enhanced error logging for debugging
-      console.error('Recognition error details:', {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status
-      });
-      
-      // Return structured error response instead of throwing
       return {
         recognized: false,
         error: error.response?.data?.error || error.message || 'Recognition failed',
@@ -222,7 +187,6 @@ class ApiService {
       const data = await this.getUsers();
       callback(data);
     } catch (error) {
-      console.error('Failed to fetch users:', error);
       callback([], error);
     }
   }, 300);
@@ -241,7 +205,6 @@ class ApiService {
       const data = await this.getLogs();
       callback(data);
     } catch (error) {
-      console.error('Failed to fetch logs:', error);
       callback([], error);
     }
   }, 300);
@@ -254,7 +217,6 @@ class ApiService {
         return response.data;
       });
     } catch (error) {
-      console.error('Get system stats failed:', error);
       // Return default stats if API fails
       return {
         totalUsers: 0,
@@ -275,7 +237,6 @@ class ApiService {
        const data = await this.getSystemStats();
        callback(data);
      } catch (error) {
-       console.error('Failed to fetch stats:', error);
        callback({}, error);
      }
    }, 300);
@@ -283,10 +244,8 @@ class ApiService {
    // Clear specific cache entries
    clearCache(key) {
      if (key) {
-       console.log(`Clearing cache for ${key}`);
        this.cache.delete(key);
      } else {
-       console.log('Clearing all cache');
        this.cache.clear();
      }
    }
@@ -298,24 +257,14 @@ class ApiService {
 
   // Get user by ID
   async getUser(userId) {
-    try {
-      const response = await api.get(`/api/user/${userId}`);
-      return response.data;
-    } catch (error) {
-      console.error('Get user failed:', error);
-      throw error;
-    }
+    const response = await api.get(`/api/user/${userId}`);
+    return response.data;
   }
 
   // Export recognition logs
   async exportLogs() {
-    try {
-      const response = await api.get('/api/export/logs');
-      return response.data;
-    } catch (error) {
-      console.error('Export logs failed:', error);
-      throw error;
-    }
+    const response = await api.get('/api/export/logs');
+    return response.data;
   }
 
   // Get recognition logs with optional limit parameter
@@ -326,7 +275,6 @@ class ApiService {
       });
       return response.data;
     } catch (error) {
-      console.error('Failed to fetch recognition logs:', error);
       const errorMessage = error.response?.data?.error || 'Failed to fetch recognition logs. Please try again.';
       throw new Error(errorMessage);
     }

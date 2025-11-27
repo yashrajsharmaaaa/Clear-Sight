@@ -62,7 +62,6 @@ const Dashboard = () => {
     
     apiService.debouncedGetStats((data, error) => {
       if (!error) {
-        console.log('Stats received:', data);
         setStats({
           totalUsers: data.totalUsers || 0,
           avgConfidence: data.avgConfidence || 0,
