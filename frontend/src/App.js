@@ -14,7 +14,7 @@ const LoadingComponent = () => (
   </div>
 );
 function App() {
-  const [currentPage, setCurrentPage] = useState('dashboard');
+  const [currentPage, setCurrentPage] = useState('registration');
 
   const renderPage = () => {
     switch (currentPage) {

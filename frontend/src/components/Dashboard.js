@@ -1,28 +1,19 @@
-import React, { useState, useEffect, useCallback, useRef, Suspense } from 'react';
+import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import apiService from '../services/api';
 import { formatTimestamp, formatConfidence } from '../utils/formatters';
 const UsersTab = React.lazy(() => import('./tabs/UsersTab'));
 const LogsTab = React.lazy(() => import('./tabs/LogsTab'));
-const RecognitionTab = React.lazy(() => import('./tabs/RecognitionTab'));
 
 const Dashboard = () => {
   const [users, setUsers] = useState([]);
   const [logs, setLogs] = useState([]);
-  const [recognitionLogs, setRecognitionLogs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('users');
   const [stats, setStats] = useState({
     totalUsers: 0,
-    totalRecognitions: 0,
     avgConfidence: 0,
-    successRate: 0,
     mostActiveUsers: []
   });
-  
-  // Store interval ID in ref for proper cleanup
-  const refreshIntervalRef = useRef(null);
-
   // Memoized format functions
   const formatDate = useCallback((dateString) => {
     try {
@@ -36,26 +27,7 @@ const Dashboard = () => {
     return Math.round(confidence * 100);
   }, []);
 
-  // Fetch recognition logs function
-  // Background refresh flag prevents showing loading indicator during auto-refresh
-  const fetchRecognitionLogs = useCallback(async (isBackgroundRefresh = false) => {
-    try {
-      // Only clear error on initial load, not background refresh
-      if (!isBackgroundRefresh) {
-        setError(null);
-      }
-      const response = await apiService.getRecognitionLogs(50);
-      setRecognitionLogs(response.logs || []);
-      // Clear any previous errors on successful fetch
-      setError(null);
-    } catch (err) {
-      console.error('Failed to fetch recognition logs:', err);
-      // Only set error state if not a background refresh to avoid disrupting display
-      if (!isBackgroundRefresh) {
-        setError(err.message || 'Failed to load recognition logs');
-      }
-    }
-  }, []); // Removed 'error' dependency to prevent unnecessary re-renders
+
 
   // Memoized load function with debounced API calls
   const loadDashboardData = useCallback(async () => {
@@ -97,26 +69,7 @@ const Dashboard = () => {
 
   useEffect(() => {
     loadDashboardData();
-    fetchRecognitionLogs();
-  }, [loadDashboardData, fetchRecognitionLogs]);
-
-  // Auto-refresh effect: fetch recognition logs every 30 seconds
-  useEffect(() => {
-    // Set up interval for auto-refresh
-    refreshIntervalRef.current = setInterval(() => {
-      // Pass true to indicate this is a background refresh
-      // This prevents showing loading indicator and maintains current display
-      fetchRecognitionLogs(true);
-    }, 30000); // 30 seconds
-
-    // Cleanup function to clear interval on component unmount
-    return () => {
-      if (refreshIntervalRef.current) {
-        clearInterval(refreshIntervalRef.current);
-        refreshIntervalRef.current = null;
-      }
-    };
-  }, [fetchRecognitionLogs]);
+  }, [loadDashboardData]);
 
   if (loading) {
     return (
@@ -153,17 +106,6 @@ const Dashboard = () => {
         </div>
         
         <div className="stat-card" style={{ 
-          background: 'rgba(33, 150, 243, 0.2)', 
-          border: '1px solid rgba(33, 150, 243, 0.4)',
-          borderRadius: '15px',
-          padding: '20px',
-          textAlign: 'center'
-        }}>
-          <h3 style={{ margin: '0 0 10px 0', color: '#2196F3' }}>🔍 Total Recognitions</h3>
-          <p style={{ fontSize: '2em', fontWeight: 'bold', margin: 0 }}>{stats.totalRecognitions}</p>
-        </div>
-        
-        <div className="stat-card" style={{ 
           background: 'rgba(255, 152, 0, 0.2)', 
           border: '1px solid rgba(255, 152, 0, 0.4)',
           borderRadius: '15px',
@@ -174,18 +116,6 @@ const Dashboard = () => {
           <p style={{ fontSize: '2em', fontWeight: 'bold', margin: 0 }}>
             {stats.avgConfidence > 0 ? `${formatConfidence(stats.avgConfidence)}%` : 'N/A'}
           </p>
-        </div>
-        
-        <div className="stat-card" style={{ 
-          background: 'rgba(76, 175, 80, 0.2)', 
-          border: '1px solid rgba(76, 175, 80, 0.4)',
-          borderRadius: '15px',
-          padding: '20px',
-          textAlign: 'center'
-        }}>
-          <h3 style={{ margin: '0 0 10px 0', color: '#4CAF50' }}>🎯 Success Rate</h3>
-          <p style={{ fontSize: '2em', fontWeight: 'bold', margin: 0 }}>{stats.successRate}%</p>
-          <small style={{ opacity: 0.8 }}>High confidence</small>
         </div>
       </div>
 
@@ -201,16 +131,9 @@ const Dashboard = () => {
         <button 
           className={`btn ${activeTab === 'logs' ? 'btn-primary' : 'btn-warning'}`}
           onClick={() => setActiveTab('logs')}
-          style={{ marginRight: '10px', padding: '10px 20px', fontSize: '1.1em' }}
-        >
-          📋 Logs ({logs.length})
-        </button>
-        <button 
-          className={`btn ${activeTab === 'recognition' ? 'btn-primary' : 'btn-warning'}`}
-          onClick={() => setActiveTab('recognition')}
           style={{ padding: '10px 20px', fontSize: '1.1em' }}
         >
-          🎯 Recognition Logs ({recognitionLogs.length})
+          📋 Logs ({logs.length})
         </button>
       </div>
 
@@ -223,12 +146,6 @@ const Dashboard = () => {
       {activeTab === 'logs' && (
         <Suspense fallback={<div style={{ textAlign: 'center', padding: '20px' }}>Loading logs...</div>}>
           <LogsTab logs={logs} formatDate={formatDate} formatConfidencePercent={formatConfidencePercent} />
-        </Suspense>
-      )}
-
-      {activeTab === 'recognition' && (
-        <Suspense fallback={<div style={{ textAlign: 'center', padding: '20px' }}>Loading recognition logs...</div>}>
-          <RecognitionTab recognitionLogs={recognitionLogs} error={error} onRetry={fetchRecognitionLogs} />
         </Suspense>
       )}
 
@@ -258,10 +175,7 @@ const Dashboard = () => {
       <div style={{ textAlign: 'center', marginTop: '30px', display: 'flex', gap: '15px', justifyContent: 'center', flexWrap: 'wrap' }}>
         <button 
           className="btn btn-primary" 
-          onClick={() => {
-            loadDashboardData();
-            fetchRecognitionLogs();
-          }}
+          onClick={loadDashboardData}
           disabled={loading}
           style={{ padding: '10px 20px', fontSize: '1.1em' }}
         >
