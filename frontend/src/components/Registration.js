@@ -107,6 +107,7 @@ const Registration = () => {
                       ref={webcamRef}
                       screenshotFormat="image/jpeg"
                       videoConstraints={videoConstraints}
+                      mirrored={true}
                       style={{ width: '100%', aspectRatio: '4 / 3', display: 'block', background: '#0f172a10' }}
                     />
                   </Suspense>

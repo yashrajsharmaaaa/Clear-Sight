@@ -61,12 +61,19 @@ const Dashboard = () => {
     });
     
     apiService.debouncedGetStats((data, error) => {
-      if (!error) {
+      if (!error && data) {
+        console.log('Stats API Response:', data);
         setStats({
           totalUsers: data.totalUsers || 0,
           avgConfidence: data.avgConfidence || 0,
           mostActiveUsers: data.mostActiveUsers || []
         });
+        console.log('Stats State Updated:', {
+          totalUsers: data.totalUsers || 0,
+          avgConfidence: data.avgConfidence || 0
+        });
+      } else if (error) {
+        console.error('Stats API Error:', error);
       }
       loadingStates.stats = false;
       updateLoadingState();
@@ -76,6 +83,26 @@ const Dashboard = () => {
   useEffect(() => {
     loadDashboardData();
   }, [loadDashboardData]);
+
+  // Calculate stats from actual data when users or logs change
+  useEffect(() => {
+    if (logs.length > 0) {
+      const totalConfidence = logs.reduce((sum, log) => sum + (log.confidence || 0), 0);
+      const calculatedAvgConfidence = totalConfidence / logs.length;
+      
+      console.log('Calculated from logs:', {
+        totalLogs: logs.length,
+        avgConfidence: calculatedAvgConfidence
+      });
+      
+      // Update stats with calculated values
+      setStats(prevStats => ({
+        ...prevStats,
+        totalUsers: users.length || prevStats.totalUsers,
+        avgConfidence: calculatedAvgConfidence || prevStats.avgConfidence
+      }));
+    }
+  }, [users, logs]);
 
   if (loading) {
     return (
@@ -108,7 +135,7 @@ const Dashboard = () => {
           textAlign: 'center'
         }}>
           <h3 style={{ margin: '0 0 10px 0', color: '#4CAF50' }}>👥 Total Users</h3>
-          <p style={{ fontSize: '2em', fontWeight: 'bold', margin: 0 }}>{stats.totalUsers}</p>
+          <p style={{ fontSize: '2em', fontWeight: 'bold', margin: 0 }}>{users.length || stats.totalUsers || 0}</p>
         </div>
         
         <div className="stat-card" style={{ 
