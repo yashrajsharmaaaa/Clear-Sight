@@ -73,6 +73,12 @@ backend/.hypothesis/
 .pytest_cache/
 backend/.pytest_cache/
 
+# Test files
+*test*.py
+*test*.js
+*.test.js
+*.test.py
+
 # Documentation (local only)
 DEPLOYMENT_CHECKLIST.md
 MYSQL_SETUP.md
