@@ -109,6 +109,8 @@ def get_cors_config():
     return {
         'origins': get_cors_origins(),
         'supports_credentials': False,
+        'methods': ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+        'allow_headers': ['Content-Type', 'Authorization'],
     }
 
 
