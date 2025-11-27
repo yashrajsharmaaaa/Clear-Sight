@@ -8,7 +8,7 @@ A modern web application that automatically recognizes faces using your webcam. 
 
 ## ✨ Key Features
 
-- 🎥 **Automatic Recognition** - No button clicks needed, just look at the camera
+- 🎥 **Face Recognition** - Recognize registered users via webcam
 - 🎯 **High Accuracy** - AI preprocessing adapts to different lighting conditions
 - ⚙️ **Easy Configuration** - Tune settings for your specific needs
 - 📊 **User Dashboard** - Track registrations and recognition logs
@@ -19,9 +19,9 @@ A modern web application that automatically recognizes faces using your webcam. 
 ## 📖 How It Works
 
 1. **Register Users** - Capture face photos and save user info
-2. **Automatic Detection** - System monitors webcam continuously
+2. **Recognize Faces** - Click button to recognize registered users
 3. **Smart Recognition** - AI preprocessing improves accuracy
-4. **Instant Results** - See who's recognized automatically
+4. **Instant Results** - See recognition results immediately
 
 ### The Technology
 

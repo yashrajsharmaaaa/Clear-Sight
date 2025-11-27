@@ -1,22 +1,11 @@
-import React, { useState, useRef, useEffect, Suspense } from 'react';
+import React, { useState, useRef, Suspense } from 'react';
 const Webcam = React.lazy(() => import('react-webcam'));
 import apiService from '../services/api';
-
-// Configuration constants for automatic recognition
-const AUTO_RECOGNITION_INTERVAL = 2000; // Check every 2 seconds
-const MIN_RECOGNITION_DELAY = 3000; // Minimum 3s between recognitions
-const FACE_DETECTION_CONFIDENCE_THRESHOLD = 0.5;
 
 const Recognition = () => {
   const webcamRef = useRef(null);
   const [isRecognizing, setIsRecognizing] = useState(false);
   const [recognitionResult, setRecognitionResult] = useState(null);
-  const [status, setStatus] = useState('');
-  
-  // Automatic recognition state management
-  const [autoRecognitionEnabled, setAutoRecognitionEnabled] = useState(true);
-  const [isDetecting, setIsDetecting] = useState(false);
-  const [lastRecognitionTime, setLastRecognitionTime] = useState(0);
 
   // Simple video constraints
   const videoConstraints = {
@@ -25,115 +14,39 @@ const Recognition = () => {
     facingMode: "user"
   };
 
-  // Helper function to select largest face from multiple detected faces
-  const selectLargestFace = (faces) => {
-    if (!faces || faces.length === 0) return null;
-    
-    // Calculate area for each face and select the one with largest area
-    let largestFace = faces[0];
-    let maxArea = faces[0].width * faces[0].height;
-    
-    for (let i = 1; i < faces.length; i++) {
-      const area = faces[i].width * faces[i].height;
-      if (area > maxArea) {
-        maxArea = area;
-        largestFace = faces[i];
-      }
+  // Manual recognition function
+  const handleRecognize = async () => {
+    if (!webcamRef.current) {
+      alert('Webcam not ready');
+      return;
     }
-    
-    return largestFace;
-  };
 
-  // Continuous face detection and recognition loop
-  useEffect(() => {
-    if (!autoRecognitionEnabled) return;
-    
-    const interval = setInterval(async () => {
-      // Skip if already recognizing or detecting
-      if (isRecognizing || isDetecting) return;
-      
-      // Check if webcam is ready
-      if (!webcamRef.current) return;
-      
-      // Capture current frame
-      const imageSrc = webcamRef.current.getScreenshot();
-      if (!imageSrc) return;
-      
-      // Detect face in current frame
-      setIsDetecting(true);
-      try {
-        const detectionResult = await apiService.detectFace(imageSrc);
-        
-        // Handle structured error responses from API service
-        if (detectionResult.error) {
-          console.error('Face detection error:', detectionResult.error);
-          setStatus('⚠️ Detection error. Retrying...');
-          // Don't stop auto-recognition on error
-        } else if (detectionResult.success && detectionResult.faces_detected > 0) {
-          // Select largest face if multiple faces detected
-          const selectedFace = selectLargestFace(detectionResult.faces);
-          
-          // Face detected - trigger recognition with debouncing
-          const now = Date.now();
-          if (now - lastRecognitionTime >= MIN_RECOGNITION_DELAY) {
-            await performRecognition(imageSrc, selectedFace);
-          }
-        } else {
-          // No face detected - update status
-          setStatus('👀 Monitoring for faces...');
-        }
-      } catch (error) {
-        // This catch handles unexpected errors (network issues, etc.)
-        console.error('Unexpected face detection error:', error);
-        setStatus('⚠️ Connection error. Retrying...');
-        // Don't stop auto-recognition on error
-      } finally {
-        setIsDetecting(false);
-      }
-    }, AUTO_RECOGNITION_INTERVAL);
-    
-    return () => clearInterval(interval);
-  }, [autoRecognitionEnabled, isRecognizing, isDetecting, lastRecognitionTime]);
+    const imageSrc = webcamRef.current.getScreenshot();
+    if (!imageSrc) {
+      alert('Failed to capture image');
+      return;
+    }
 
-  // Perform recognition with selected face
-  const performRecognition = async (imageSrc, selectedFace) => {
     setIsRecognizing(true);
-    setLastRecognitionTime(Date.now());
-    
+    setRecognitionResult(null);
+
     try {
       const result = await apiService.recognizeFace(imageSrc);
-      
-      // Handle structured error responses from API service
-      if (result.error) {
-        console.error('Recognition error:', result.error);
-        // Set error result but continue monitoring
-        setRecognitionResult({ 
-          recognized: false, 
-          message: result.message || 'Recognition failed. Continuing to monitor...',
-          error: result.error
-        });
-      } else {
-        setRecognitionResult(result);
-      }
+      setRecognitionResult(result);
     } catch (error) {
-      // This catch handles unexpected errors (network issues, etc.)
-      console.error('Unexpected recognition error:', error);
-      // Set error result but continue monitoring
-      setRecognitionResult({ 
-        recognized: false, 
-        message: 'Error connecting to server. Continuing to monitor...' 
+      console.error('Recognition error:', error);
+      setRecognitionResult({
+        recognized: false,
+        message: 'Recognition failed. Please try again.'
       });
     } finally {
       setIsRecognizing(false);
     }
   };
 
-
-
   // Simple clear function
   const clearResults = () => {
     setRecognitionResult(null);
-    setStatus('');
   };
 
   return (
@@ -186,44 +99,27 @@ const Recognition = () => {
         )}
       </div>
 
-      {/* Auto-recognition status indicators */}
-      <div className="auto-recognition-status" style={{ marginTop: '20px', marginBottom: '20px' }}>
-        {autoRecognitionEnabled && !isRecognizing && !isDetecting && !recognitionResult && (
-          <div className="status-message status-info">
-            👀 Monitoring for faces...
-          </div>
-        )}
-        
-        {isDetecting && (
-          <div className="status-message status-info">
-            🔍 Detecting face...
-          </div>
-        )}
-        
-        {isRecognizing && (
-          <div className="status-message status-info">
-            <span className="loading"></span> Recognizing...
-          </div>
-        )}
-        
-        {recognitionResult && recognitionResult.recognized && (
-          <div className="status-message status-success">
-            ✅ Welcome back, {recognitionResult.user.name}! (Confidence: {Math.round(recognitionResult.confidence * 100)}%)
-          </div>
-        )}
-        
-        {recognitionResult && !recognitionResult.recognized && (
-          <div className="status-message status-error">
-            ❌ Face not recognized. Continuing to monitor...
-          </div>
-        )}
-      </div>
+      {/* Recognition status */}
+      {isRecognizing && (
+        <div className="status-message status-info" style={{ marginTop: '20px' }}>
+          <span className="loading"></span> Recognizing face...
+        </div>
+      )}
 
-      <div className="camera-controls">
+      <div className="camera-controls" style={{ marginTop: '20px' }}>
+        <button 
+          className="btn btn-primary" 
+          onClick={handleRecognize}
+          disabled={isRecognizing}
+        >
+          {isRecognizing ? '⏳ Recognizing...' : '🔍 Recognize Face'}
+        </button>
+        
         {recognitionResult && (
           <button 
             className="btn btn-warning" 
             onClick={clearResults}
+            style={{ marginLeft: '10px' }}
           >
             🗑️ Clear Results
           </button>
@@ -254,14 +150,13 @@ const Recognition = () => {
       )}
 
       <div style={{ marginTop: '30px', opacity: 0.8 }}>
-        <h4>💡 Automatic Recognition Tips:</h4>
+        <h4>💡 Recognition Tips:</h4>
         <ul style={{ textAlign: 'left', maxWidth: '600px', margin: '0 auto' }}>
           <li>🔆 Ensure your face is well-lit</li>
           <li>👤 Make sure only your face is visible</li>
           <li>📏 Position yourself at the same distance as during registration</li>
           <li>😐 Keep a similar facial expression as your registered photo</li>
-          <li>🤖 The system automatically recognizes faces - no button needed!</li>
-          <li>⏱️ Recognition happens every few seconds when a face is detected</li>
+          <li>🎯 Click "Recognize Face" button when ready</li>
         </ul>
       </div>
     </div>

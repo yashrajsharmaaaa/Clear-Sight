@@ -97,20 +97,7 @@ class ApiService {
     this.pendingRequests.set(key, requestPromise);
     return requestPromise;
   }
-  // Face detection with improved error handling
-  async detectFace(imageData) {
-    try {
-      const response = await api.post('/api/detect-face', { image_data: imageData });
-      return response.data;
-    } catch (error) {
-      console.error('Face detection failed:', error);
-      // Return structured error for better UI handling
-      return {
-        success: false,
-        error: error.response?.data?.error || 'Failed to detect face. Please try again.'
-      };
-    }
-  }
+
 
   // User registration with improved error handling and cache management
   async registerUser(name, email, imageData, employeeId, department) {
@@ -212,7 +199,6 @@ class ApiService {
       });
       
       // Return structured error response instead of throwing
-      // This ensures the auto-recognition loop continues
       return {
         recognized: false,
         error: error.response?.data?.error || error.message || 'Recognition failed',
