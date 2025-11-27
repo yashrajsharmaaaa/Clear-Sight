@@ -61,7 +61,14 @@ const Dashboard = () => {
     });
     
     apiService.debouncedGetStats((data, error) => {
-      if (!error) setStats(data);
+      if (!error) {
+        console.log('Stats received:', data);
+        setStats({
+          totalUsers: data.totalUsers || 0,
+          avgConfidence: data.avgConfidence || 0,
+          mostActiveUsers: data.mostActiveUsers || []
+        });
+      }
       loadingStates.stats = false;
       updateLoadingState();
     });

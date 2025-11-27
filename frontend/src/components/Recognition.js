@@ -77,7 +77,7 @@ const Recognition = () => {
             screenshotFormat="image/jpeg"
             videoConstraints={videoConstraints}
             className="camera-feed"
-            style={{ transform: 'scaleX(-1)' }}
+            mirrored={true}
           />
         </Suspense>
         
