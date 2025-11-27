@@ -97,11 +97,11 @@ def detect_face():
         face_data = []
         for face in faces:
             face_data.append({
-                'x': face['x'],
-                'y': face['y'],
-                'width': face['width'],
-                'height': face['height'],
-                'confidence': face['confidence']
+                'x': face.get('x', 0),
+                'y': face.get('y', 0),
+                'width': face.get('width', 0),
+                'height': face.get('height', 0),
+                'confidence': face.get('confidence', 0.0)
             })
         
         return jsonify({
@@ -429,6 +429,24 @@ def get_logs():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/recognition-logs', methods=['GET'])
+def get_recognition_logs_api():
+    """Get recognition logs with optional limit parameter"""
+    try:
+        # Get limit parameter from query string, default to 50
+        limit = request.args.get('limit', default=50, type=int)
+        
+        # Validate limit is positive
+        if limit <= 0:
+            limit = 50
+        
+        # Call existing database function
+        logs = get_recognition_logs(limit)
+        
+        return jsonify({'logs': logs}), 200
+    except Exception as e:
+        return jsonify({'error': 'Failed to fetch recognition logs'}), 500
+
 @app.route('/api/user/<int:user_id>', methods=['GET'])
 def get_user(user_id):
     """Get user details by ID"""
@@ -456,7 +474,7 @@ def api_get_system_stats():
         # Calculate average confidence
         avg_confidence = 0
         if logs:
-            avg_confidence = sum(log['confidence'] for log in logs) / len(logs)
+            avg_confidence = sum(log.get('confidence', 0) for log in logs) / len(logs)
         
         # Calculate recognition rate (last 24 hours)
         from datetime import timedelta
@@ -488,7 +506,7 @@ def api_get_system_stats():
         recent_activity = len(recent_logs)
         
         # Calculate success rate
-        high_confidence_logs = [log for log in logs if log['confidence'] > 0.7]
+        high_confidence_logs = [log for log in logs if log.get('confidence', 0) > 0.7]
         success_rate = len(high_confidence_logs) / len(logs) * 100 if logs else 0
         
         # Get most active users
@@ -538,7 +556,7 @@ def api_export_logs():
         
         csv_data = "User Name,Email,Confidence,Timestamp\n"
         for log in logs:
-            csv_data += f"{log['user_name']},{log.get('user_email', '')},{log['confidence']},{log['timestamp']}\n"
+            csv_data += f"{log['user_name']},{log.get('user_email', '')},{log.get('confidence', 0)},{log['timestamp']}\n"
         
         return jsonify({
             'success': True,

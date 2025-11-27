@@ -1,5 +1,5 @@
-import React, { useState, useRef, useCallback } from 'react';
-import Webcam from 'react-webcam';
+import React, { useState, useRef, useCallback, Suspense } from 'react';
+const Webcam = React.lazy(() => import('react-webcam'));
 import apiService from '../services/api';
 
 const Registration = () => {
@@ -104,13 +104,30 @@ const Registration = () => {
             <div style={{ flex: '1 1 340px' }}>
               <div style={{ borderRadius: 12, overflow: 'hidden', border: '1px solid #E2E8F0', background: '#F8FAFC' }}>
                 {!capturedImage ? (
-                  <Webcam
-                    audio={false}
-                    ref={webcamRef}
-                    screenshotFormat="image/jpeg"
-                    videoConstraints={videoConstraints}
-                    style={{ width: '100%', aspectRatio: '4 / 3', display: 'block', background: '#0f172a10' }}
-                  />
+                  <Suspense
+                    fallback={
+                      <div
+                        style={{
+                          width: '100%',
+                          aspectRatio: '4 / 3',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          background: '#f1f5f9'
+                        }}
+                      >
+                        Loading camera...
+                      </div>
+                    }
+                  >
+                    <Webcam
+                      audio={false}
+                      ref={webcamRef}
+                      screenshotFormat="image/jpeg"
+                      videoConstraints={videoConstraints}
+                      style={{ width: '100%', aspectRatio: '4 / 3', display: 'block', background: '#0f172a10' }}
+                    />
+                  </Suspense>
                 ) : (
                   <img 
                     src={capturedImage} 

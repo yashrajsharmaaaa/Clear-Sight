@@ -306,6 +306,45 @@
   font-weight: bold;
 }
 
+/* Recognition Logs Styling */
+.recognition-logs-list {
+  scrollbar-width: thin;
+  scrollbar-color: #CBD5E1 #F1F5F9;
+}
+
+.recognition-logs-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.recognition-logs-list::-webkit-scrollbar-track {
+  background: #F1F5F9;
+  border-radius: 4px;
+}
+
+.recognition-logs-list::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 4px;
+}
+
+.recognition-logs-list::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
+
+.recognition-log-card {
+  animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @media (max-width: 768px) {
   .nav-bar {
     flex-wrap: wrap;
@@ -328,5 +367,38 @@
   
   .users-grid {
     grid-template-columns: 1fr;
+  }
+  
+  .recognition-log-card {
+    padding: 15px !important;
+  }
+  
+  .recognition-log-card > div {
+    flex-direction: column;
+    align-items: flex-start !important;
+  }
+  
+  .recognition-log-card > div > div:last-child {
+    width: 100%;
+    justify-content: flex-start !important;
+    margin-top: 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .page-container {
+    padding: 15px;
+  }
+  
+  .page-title {
+    font-size: 1.5em;
+  }
+  
+  .stats-grid {
+    grid-template-columns: 1fr !important;
+  }
+  
+  .recognition-logs-list {
+    max-height: 400px !important;
   }
 }

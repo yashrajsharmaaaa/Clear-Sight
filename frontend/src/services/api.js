@@ -331,6 +331,20 @@ class ApiService {
       throw error;
     }
   }
+
+  // Get recognition logs with optional limit parameter
+  async getRecognitionLogs(limit = 50) {
+    try {
+      const response = await api.get('/api/recognition-logs', {
+        params: { limit }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Failed to fetch recognition logs:', error);
+      const errorMessage = error.response?.data?.error || 'Failed to fetch recognition logs. Please try again.';
+      throw new Error(errorMessage);
+    }
+  }
 }
 
 export default new ApiService();

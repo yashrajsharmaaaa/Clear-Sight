@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
-import Webcam from 'react-webcam';
+import React, { useState, useRef, useEffect, Suspense } from 'react';
+const Webcam = React.lazy(() => import('react-webcam'));
 import apiService from '../services/api';
 
 // Configuration constants for automatic recognition
@@ -141,13 +141,31 @@ const Recognition = () => {
       <h2 className="page-title">🔍 Face Recognition</h2>
       
       <div className="camera-container">
-        <Webcam
-          audio={false}
-          ref={webcamRef}
-          screenshotFormat="image/jpeg"
-          videoConstraints={videoConstraints}
-          className="camera-feed"
-        />
+        <Suspense
+          fallback={
+            <div
+              className="camera-feed"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: '#e2e8f0',
+                aspectRatio: '4 / 3',
+                width: '100%'
+              }}
+            >
+              Loading camera...
+            </div>
+          }
+        >
+          <Webcam
+            audio={false}
+            ref={webcamRef}
+            screenshotFormat="image/jpeg"
+            videoConstraints={videoConstraints}
+            className="camera-feed"
+          />
+        </Suspense>
         
         {/* Show recognition result overlay */}
         {recognitionResult && recognitionResult.recognized && recognitionResult.bounding_box && (

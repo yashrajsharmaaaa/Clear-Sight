@@ -1,10 +1,16 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import apiService from '../services/api';
+import { formatTimestamp, formatConfidence } from '../utils/formatters';
+const UsersTab = React.lazy(() => import('./tabs/UsersTab'));
+const LogsTab = React.lazy(() => import('./tabs/LogsTab'));
+const RecognitionTab = React.lazy(() => import('./tabs/RecognitionTab'));
 
 const Dashboard = () => {
   const [users, setUsers] = useState([]);
   const [logs, setLogs] = useState([]);
+  const [recognitionLogs, setRecognitionLogs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('users');
   const [stats, setStats] = useState({
     totalUsers: 0,
@@ -13,6 +19,9 @@ const Dashboard = () => {
     successRate: 0,
     mostActiveUsers: []
   });
+  
+  // Store interval ID in ref for proper cleanup
+  const refreshIntervalRef = useRef(null);
 
   // Memoized format functions
   const formatDate = useCallback((dateString) => {
@@ -23,9 +32,30 @@ const Dashboard = () => {
     }
   }, []);
 
-  const formatConfidence = useCallback((confidence) => {
+  const formatConfidencePercent = useCallback((confidence) => {
     return Math.round(confidence * 100);
   }, []);
+
+  // Fetch recognition logs function
+  // Background refresh flag prevents showing loading indicator during auto-refresh
+  const fetchRecognitionLogs = useCallback(async (isBackgroundRefresh = false) => {
+    try {
+      // Only clear error on initial load, not background refresh
+      if (!isBackgroundRefresh) {
+        setError(null);
+      }
+      const response = await apiService.getRecognitionLogs(50);
+      setRecognitionLogs(response.logs || []);
+      // Clear any previous errors on successful fetch
+      setError(null);
+    } catch (err) {
+      console.error('Failed to fetch recognition logs:', err);
+      // Only set error state if not a background refresh to avoid disrupting display
+      if (!isBackgroundRefresh) {
+        setError(err.message || 'Failed to load recognition logs');
+      }
+    }
+  }, []); // Removed 'error' dependency to prevent unnecessary re-renders
 
   // Memoized load function with debounced API calls
   const loadDashboardData = useCallback(async () => {
@@ -67,7 +97,26 @@ const Dashboard = () => {
 
   useEffect(() => {
     loadDashboardData();
-  }, [loadDashboardData]);
+    fetchRecognitionLogs();
+  }, [loadDashboardData, fetchRecognitionLogs]);
+
+  // Auto-refresh effect: fetch recognition logs every 30 seconds
+  useEffect(() => {
+    // Set up interval for auto-refresh
+    refreshIntervalRef.current = setInterval(() => {
+      // Pass true to indicate this is a background refresh
+      // This prevents showing loading indicator and maintains current display
+      fetchRecognitionLogs(true);
+    }, 30000); // 30 seconds
+
+    // Cleanup function to clear interval on component unmount
+    return () => {
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current);
+        refreshIntervalRef.current = null;
+      }
+    };
+  }, [fetchRecognitionLogs]);
 
   if (loading) {
     return (
@@ -152,71 +201,35 @@ const Dashboard = () => {
         <button 
           className={`btn ${activeTab === 'logs' ? 'btn-primary' : 'btn-warning'}`}
           onClick={() => setActiveTab('logs')}
-          style={{ padding: '10px 20px', fontSize: '1.1em' }}
+          style={{ marginRight: '10px', padding: '10px 20px', fontSize: '1.1em' }}
         >
           📋 Logs ({logs.length})
         </button>
+        <button 
+          className={`btn ${activeTab === 'recognition' ? 'btn-primary' : 'btn-warning'}`}
+          onClick={() => setActiveTab('recognition')}
+          style={{ padding: '10px 20px', fontSize: '1.1em' }}
+        >
+          🎯 Recognition Logs ({recognitionLogs.length})
+        </button>
       </div>
 
-      {/* Users Tab */}
       {activeTab === 'users' && (
-        <div className="users-section">
-          <h3 style={{ textAlign: 'center', marginBottom: '20px' }}>👥 Registered Users</h3>
-          {users.length === 0 ? (
-            <div className="status-message status-info" style={{ textAlign: 'center', padding: '20px', background: 'rgba(33, 150, 243, 0.1)', borderRadius: '10px' }}>
-              <p>No users registered yet. Go to the Registration page to add users.</p>
-            </div>
-          ) : (
-            <div className="users-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
-              {users.map((user) => (
-                <div key={user.id} className="user-card" style={{ background: 'rgba(255, 255, 255, 0.05)', borderRadius: '10px', padding: '15px', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}>
-                  <h4 style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '10px', marginBottom: '10px' }}>👤 {user.name}</h4>
-                  {user.email && <p>📧 {user.email}</p>}
-                  <p>🆔 <strong>ID:</strong> {user.id}</p>
-                  <p>📅 <strong>Registered:</strong> {formatDate(user.created_at)}</p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        <Suspense fallback={<div style={{ textAlign: 'center', padding: '20px' }}>Loading users...</div>}>
+          <UsersTab users={users} formatDate={formatDate} />
+        </Suspense>
       )}
 
-      {/* Logs Tab */}
       {activeTab === 'logs' && (
-        <div className="logs-section">
-          <h3 style={{ textAlign: 'center', marginBottom: '20px' }}>📋 Recognition Logs</h3>
-          {logs.length === 0 ? (
-            <div className="status-message status-info" style={{ textAlign: 'center', padding: '20px', background: 'rgba(33, 150, 243, 0.1)', borderRadius: '10px' }}>
-              <p>No recognition events logged yet. Use the Recognition page to identify users.</p>
-            </div>
-          ) : (
-            <div className="logs-container" style={{ maxHeight: '500px', overflowY: 'auto', padding: '10px', borderRadius: '10px', background: 'rgba(255, 255, 255, 0.03)' }}>
-              {logs.map((log, index) => (
-                <div key={index} className="log-entry" style={{ padding: '12px', marginBottom: '10px', borderRadius: '8px', background: 'rgba(255, 255, 255, 0.05)', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
-                    <div>
-                      <strong>👤 {log.user_name}</strong>
-                      {log.user_email && <span style={{ opacity: 0.8 }}> ({log.user_email})</span>}
-                    </div>
-                    <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
-                      <span style={{ 
-                        background: log.confidence > 0.7 ? 'rgba(76, 175, 80, 0.2)' : 'rgba(255, 152, 0, 0.2)', 
-                        padding: '4px 8px', 
-                        borderRadius: '8px',
-                        fontSize: '0.9em'
-                      }}>
-                        🎯 {formatConfidence(log.confidence)}%
-                      </span>
-                      <span style={{ opacity: 0.8, fontSize: '0.9em' }}>
-                        ⏰ {formatDate(log.timestamp)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        <Suspense fallback={<div style={{ textAlign: 'center', padding: '20px' }}>Loading logs...</div>}>
+          <LogsTab logs={logs} formatDate={formatDate} formatConfidencePercent={formatConfidencePercent} />
+        </Suspense>
+      )}
+
+      {activeTab === 'recognition' && (
+        <Suspense fallback={<div style={{ textAlign: 'center', padding: '20px' }}>Loading recognition logs...</div>}>
+          <RecognitionTab recognitionLogs={recognitionLogs} error={error} onRetry={fetchRecognitionLogs} />
+        </Suspense>
       )}
 
       {/* Most Active Users Section */}
@@ -245,7 +258,10 @@ const Dashboard = () => {
       <div style={{ textAlign: 'center', marginTop: '30px', display: 'flex', gap: '15px', justifyContent: 'center', flexWrap: 'wrap' }}>
         <button 
           className="btn btn-primary" 
-          onClick={loadDashboardData}
+          onClick={() => {
+            loadDashboardData();
+            fetchRecognitionLogs();
+          }}
           disabled={loading}
           style={{ padding: '10px 20px', fontSize: '1.1em' }}
         >
