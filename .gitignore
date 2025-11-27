@@ -72,14 +72,19 @@ backup_*
 backend/.hypothesis/
 .pytest_cache/
 backend/.pytest_cache/
+*.pytest_cache/
 
-# Test files
-*test*.py
-*test*.js
-*.test.js
-*.test.py
+# Build outputs
+frontend/build/
+backend/dist/
 
-# Documentation (local only)
-DEPLOYMENT_CHECKLIST.md
-MYSQL_SETUP.md
-RENDER_CONFIG.md
+# Coverage reports
+htmlcov/
+.coverage
+coverage.xml
+
+# Test files (if you want to exclude them)
+# *test*.py
+# *test*.js
+# *.test.js
+# *.test.py

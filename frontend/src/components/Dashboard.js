@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import apiService from '../services/api';
-import { formatTimestamp, formatConfidence } from '../utils/formatters';
+import { formatConfidence } from '../utils/formatters';
 const UsersTab = React.lazy(() => import('./tabs/UsersTab'));
 const LogsTab = React.lazy(() => import('./tabs/LogsTab'));
 
@@ -172,7 +172,11 @@ const Dashboard = () => {
 
       {activeTab === 'users' && (
         <Suspense fallback={<div style={{ textAlign: 'center', padding: '20px' }}>Loading users...</div>}>
-          <UsersTab users={users} formatDate={formatDate} />
+          <UsersTab 
+            users={users} 
+            formatDate={formatDate} 
+            onUserDeleted={() => loadDashboardData()} 
+          />
         </Suspense>
       )}
 

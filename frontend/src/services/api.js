@@ -279,6 +279,20 @@ class ApiService {
       throw new Error(errorMessage);
     }
   }
+
+  // Delete user by ID
+  async deleteUser(userId) {
+    try {
+      const response = await api.delete(`/api/user/${userId}`);
+      // Clear caches after deletion
+      this.clearCache('users');
+      this.clearCache('stats');
+      this.clearCache('logs');
+      return response.data;
+    } catch (error) {
+      throw new Error(error.response?.data?.error || 'Failed to delete user');
+    }
+  }
 }
 
 export default new ApiService();

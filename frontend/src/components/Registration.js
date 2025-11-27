@@ -11,7 +11,7 @@ const Registration = () => {
   const [isRegistering, setIsRegistering] = useState(false);
   const [capturedImage, setCapturedImage] = useState(null);
   const [status, setStatus] = useState('');
-  const [registrationResult, setRegistrationResult] = useState(null);
+
 
   const videoConstraints = useCallback(() => ({
     width: 640,
@@ -32,7 +32,6 @@ const Registration = () => {
   const retakePhoto = () => {
     setCapturedImage(null);
     setStatus('');
-    setRegistrationResult(null);
   };
 
   const registerUser = async () => {
@@ -51,7 +50,6 @@ const Registration = () => {
 
     try {
       const result = await apiService.registerUser(name.trim(), email.trim(), capturedImage, employeeId.trim(), department.trim());
-      setRegistrationResult(result);
       
       if (result.success) {
         setStatus(`✅ Registration successful! User ID: ${result.user_id}`);
@@ -62,7 +60,6 @@ const Registration = () => {
           setDepartment('');
           setEmail('');
           setCapturedImage(null);
-          setRegistrationResult(null);
           setStatus('');
         }, 3000);
       } else {

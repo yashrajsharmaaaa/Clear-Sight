@@ -431,6 +431,23 @@ def get_user_features():
             'face_features': json.loads(row[2])
         } for row in cursor.fetchall()]
 
+def delete_user(user_id):
+    """Delete a user and their associated data"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        
+        # Get user image path before deletion
+        cursor.execute('SELECT image_path FROM users WHERE id = %s', (user_id,))
+        result = cursor.fetchone()
+        image_path = result[0] if result else None
+        
+        # Delete user (cascade will delete recognition logs)
+        cursor.execute('DELETE FROM users WHERE id = %s', (user_id,))
+        deleted = cursor.rowcount > 0
+        conn.commit()
+        
+        return deleted, image_path
+
 # Initialize database when module is imported
 if __name__ == '__main__':
     init_database()
