@@ -34,6 +34,13 @@ const UsersTab = ({ users, formatDate, onUserDeleted }) => {
           {users.map((user) => (
             <div key={user.id} className="user-card" style={{ background: 'rgba(255, 255, 255, 0.05)', borderRadius: '10px', padding: '15px', boxShadow: '0 2px 5px rgba(0,0,0,0.1)', position: 'relative' }}>
               <h4 style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '10px', marginBottom: '10px' }}>👤 {user.name}</h4>
+              {(user.age || user.gender) && (
+                <p style={{ marginTop: '8px', marginBottom: '12px', fontSize: '14px', color: '#64748b' }}>
+                  {user.age && <span>🎂 {user.age} years</span>}
+                  {user.age && user.gender && <span> • </span>}
+                  {user.gender && <span>{user.gender === 'Male' ? '👨' : user.gender === 'Female' ? '👩' : '🧑'} {user.gender}</span>}
+                </p>
+              )}
               {user.employee_id && <p>🏢 <strong>Employee ID:</strong> {user.employee_id}</p>}
               {user.department && <p>🏛️ <strong>Department:</strong> {user.department}</p>}
               {user.email && <p>📧 {user.email}</p>}

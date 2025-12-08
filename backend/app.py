@@ -82,11 +82,15 @@ def register_user():
         email = request.form.get('email') if request.form else None
         employee_id = request.form.get('employee_id') if request.form else None
         department = request.form.get('department') if request.form else None
+        age = request.form.get('age') if request.form else None
+        gender = request.form.get('gender') if request.form else None
         if request.json:
             name = name or request.json.get('name')
             email = email or request.json.get('email')
             employee_id = employee_id or request.json.get('employee_id')
             department = department or request.json.get('department')
+            age = age or request.json.get('age')
+            gender = gender or request.json.get('gender')
         
         if not name:
             return jsonify({'error': 'Name is required'}), 400
@@ -216,7 +220,7 @@ def register_user():
         
         # Add user to database
         try:
-            user_id = add_user(name, email, face_features, image_path, employee_id, department)
+            user_id = add_user(name, email, face_features, image_path, employee_id, department, age, gender)
             
             return jsonify({
                 'success': True,

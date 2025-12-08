@@ -94,7 +94,7 @@ class ApiService {
 
 
   // User registration with improved error handling and cache management
-  async registerUser(name, email, imageData, employeeId, department) {
+  async registerUser(name, email, imageData, employeeId, department, age, gender) {
     try {
       // Validate image data
       if (!imageData || !imageData.includes('base64')) {
@@ -110,6 +110,8 @@ class ApiService {
         email: email,
         employee_id: employeeId,
         department: department,
+        age: age,
+        gender: gender,
         image_data: imageData
       };
       
@@ -241,18 +243,13 @@ class ApiService {
      }
    }, 300);
    
-   // Clear specific cache entries
-   clearCache(key) {
-     if (key) {
-       this.cache.delete(key);
-     } else {
-       this.cache.clear();
-     }
-   }
-
-  // Clear cache when data changes
-  clearCache() {
-    this.cache.clear();
+  // Clear specific cache entries or all cache
+  clearCache(key) {
+    if (key) {
+      this.cache.delete(key);
+    } else {
+      this.cache.clear();
+    }
   }
 
   // Get user by ID

@@ -286,6 +286,8 @@ def init_database():
                         employee_id VARCHAR(50),
                         department VARCHAR(100),
                         email VARCHAR(100),
+                        age INT,
+                        gender VARCHAR(20),
                         face_features TEXT NOT NULL,
                         image_path VARCHAR(255),
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -333,14 +335,14 @@ def init_database():
             f"Please check your database configuration and server status."
         ) from e
 
-def add_user(name, email, face_features, image_path=None, employee_id=None, department=None):
+def add_user(name, email, face_features, image_path=None, employee_id=None, department=None, age=None, gender=None):
     """Add a new user to the database"""
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute('''
-            INSERT INTO users (name, employee_id, department, email, face_features, image_path)
-            VALUES (%s, %s, %s, %s, %s, %s)
-        ''', (name, employee_id, department, email, json.dumps(face_features), image_path))
+            INSERT INTO users (name, employee_id, department, email, age, gender, face_features, image_path)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        ''', (name, employee_id, department, email, age, gender, json.dumps(face_features), image_path))
         
         user_id = cursor.lastrowid
         conn.commit()
@@ -351,7 +353,7 @@ def get_all_users():
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT id, name, employee_id, department, email, created_at FROM users
+            SELECT id, name, employee_id, department, email, age, gender, created_at FROM users
             ORDER BY created_at DESC
         ''')
         
@@ -361,7 +363,9 @@ def get_all_users():
             'employee_id': row[2],
             'department': row[3],
             'email': row[4],
-            'created_at': row[5]
+            'age': row[5],
+            'gender': row[6],
+            'created_at': row[7]
         } for row in cursor.fetchall()]
 
 def get_user_by_id(user_id):
