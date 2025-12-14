@@ -1,4 +1,5 @@
 import axios from 'axios';
+import authService from './auth';
 
 // Use environment variable for API URL or default to localhost:5000
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
@@ -13,9 +14,16 @@ const api = axios.create({
   withCredentials: false
 });
 
-// Add request/response interceptors for better error handling and caching
+// Add request/response interceptors for better error handling and authentication
 api.interceptors.request.use(
   (config) => {
+    // Add JWT token if available
+    const authHeaders = authService.getAuthHeader();
+    config.headers = {
+      ...config.headers,
+      ...authHeaders
+    };
+    
     // Add timestamp to GET requests to prevent browser caching
     if (config.method === 'get') {
       config.params = {
@@ -30,7 +38,15 @@ api.interceptors.request.use(
 
 api.interceptors.response.use(
   (response) => response,
-  (error) => Promise.reject(error)
+  (error) => {
+    // Handle 401 Unauthorized (token expired or invalid)
+    if (error.response?.status === 401) {
+      authService.logout();
+      // Optionally redirect to login page
+      // window.location.href = '/login';
+    }
+    return Promise.reject(error);
+  }
 );
 
 // Debounce function to prevent excessive API calls

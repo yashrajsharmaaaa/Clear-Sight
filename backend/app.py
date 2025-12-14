@@ -1,511 +1,519 @@
+"""
+Simple Flask API for face recognition attendance system.
+Uses SQLAlchemy ORM and face_recognition library.
+Enhanced with rate limiting and JWT authentication.
+"""
+
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
-import cv2
-import numpy as np
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from flask_jwt_extended import (
+    JWTManager, create_access_token, jwt_required, 
+    get_jwt_identity, get_jwt
+)
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
-from database import init_database, add_user, get_all_users, get_user_by_id, log_recognition, get_recognition_logs, get_user_features, delete_user
-from face_processor import FaceProcessor
-from config import get_flask_config, get_cors_config, ensure_directories, get_upload_path
+from functools import wraps
 
-# Load environment variables from .env file
+from database import db, init_database, User, RecognitionLog
+from face_processor import FaceProcessor
+from config import get_flask_config, get_cors_config, get_recognition_config, ensure_directories
+from validators import validate_registration_data, validate_user_id, ValidationError
+
+# Load environment variables
 load_dotenv()
 
-# Initialize directories
-ensure_directories()
+# Create Flask app
+app = Flask(__name__)
 
-FRONTEND_BUILD_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'frontend', 'build'))
-app = Flask(__name__, static_folder=FRONTEND_BUILD_DIR, static_url_path='/')
+# Apply configuration
+app.config.update(get_flask_config())
 
-# Apply Flask configuration
-flask_config = get_flask_config()
-app.config.update(flask_config)
+# JWT Configuration
+app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'dev-secret-key-change-in-production')
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=int(os.environ.get('JWT_EXPIRY_HOURS', 24)))
 
-# Apply CORS configuration
-cors_config = get_cors_config()
-CORS(app, resources={r"/*": cors_config}, supports_credentials=False)
+# Initialize JWT
+jwt = JWTManager(app)
 
-# Configuration
-UPLOAD_FOLDER = get_upload_path()
-SIMILARITY_THRESHOLD = float(os.environ.get('SIMILARITY_THRESHOLD', 0.65))
-MIN_SHARPNESS = float(os.environ.get('MIN_SHARPNESS', 30.0))
-BRIGHTNESS_RANGE = (
-    float(os.environ.get('MIN_BRIGHTNESS', 60.0)),
-    float(os.environ.get('MAX_BRIGHTNESS', 200.0))
+# Setup CORS (allows React frontend to call this API)
+CORS(app, **get_cors_config())
+
+# Initialize rate limiter
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    default_limits=[os.environ.get('RATE_LIMIT_DEFAULT', '200 per hour')],
+    storage_uri=os.environ.get('RATE_LIMIT_STORAGE', 'memory://'),
+    strategy='fixed-window'
 )
 
-# Initialize database and face processor (singleton pattern)
-init_database()
+# Initialize database
+init_database(app)
+
+# Create directories
+ensure_directories()
+
+# Initialize face processor
 face_processor = FaceProcessor()
 
-# No need for periodic cache clearing with simplified caching
+# Get recognition settings
+recognition_config = get_recognition_config()
 
-@app.route('/', defaults={'path': ''})
-@app.route('/<path:path>')
-def serve(path):
-    """Serve the frontend application"""
-    if path != "" and os.path.exists(os.path.join(app.static_folder, path)):
-        return send_from_directory(app.static_folder, path)
-    else:
-        return send_from_directory(app.static_folder, 'index.html')
+# Frontend build directory
+FRONTEND_BUILD_DIR = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), '..', 'frontend', 'build')
+)
+
 
 @app.route('/health', methods=['GET'])
+@limiter.exempt  # Health check should not be rate limited
 def health_check():
-    """Health check endpoint"""
+    """Check if API is running."""
     return jsonify({
         'status': 'healthy',
-        'message': 'Clear Sight API is running',
-        'timestamp': datetime.now().isoformat()
+        'message': 'ClearSight API is running',
+        'timestamp': datetime.now().isoformat(),
+        'auth_enabled': os.environ.get('AUTH_ENABLED', 'false').lower() == 'true'
     })
 
-@app.route('/api/status', methods=['GET'])
-def api_status():
-    """API status endpoint"""
-    return jsonify({
-        'api_version': '1.0.0',
-        'service': 'Clear Sight Face Recognition',
-        'features': {
-            'face_detection': True,
-            'face_registration': True,
-            'face_recognition': True,
-            'user_management': True
-        }
-    })
 
-@app.route('/api/register', methods=['POST'])
-def register_user():
-    """Register a new user with face data"""
-    try:
-        # Get employee data
-        name = request.form.get('name') if request.form else None
-        email = request.form.get('email') if request.form else None
-        employee_id = request.form.get('employee_id') if request.form else None
-        department = request.form.get('department') if request.form else None
-        age = request.form.get('age') if request.form else None
-        gender = request.form.get('gender') if request.form else None
-        if request.json:
-            name = name or request.json.get('name')
-            email = email or request.json.get('email')
-            employee_id = employee_id or request.json.get('employee_id')
-            department = department or request.json.get('department')
-            age = age or request.json.get('age')
-            gender = gender or request.json.get('gender')
-        
-        if not name:
-            return jsonify({'error': 'Name is required'}), 400
-        
-        # Handle image data
-        image = None
-        try:
-            if request.json and 'image_data' in request.json:
-                try:
-                    image_data = request.json['image_data']
-                    if not isinstance(image_data, str) or not image_data.startswith('data:image/'):
-                        return jsonify({'error': 'Invalid image data format. Must be a base64 encoded image string'}), 400
-                    
-                    image = face_processor.decode_image(image_data)
-                    if image is None:
-                        return jsonify({'error': 'Failed to decode image from base64 data'}), 400
-                except Exception as e:
-                    return jsonify({'error': f'Error decoding image: {str(e)}'}), 400
-                    
-            elif request.files and 'image' in request.files:
-                try:
-                    file = request.files['image']
-                    if file.filename == '':
-                        return jsonify({'error': 'No selected image file'}), 400
-                        
-                    image_bytes = file.read()
-                    if not image_bytes:
-                        return jsonify({'error': 'Empty image file'}), 400
-                        
-                    nparr = np.frombuffer(image_bytes, np.uint8)
-                    image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-                    
-                    if image is None:
-                        return jsonify({'error': 'Failed to decode image file. Format may be unsupported'}), 400
-                except Exception as e:
-                    return jsonify({'error': f'Error processing image file: {str(e)}'}), 400
-            else:
-                # Try to find any image data in the request
-                found_image = False
-                
-                for key in request.files:
-                    try:
-                        file = request.files[key]
-                        image_bytes = file.read()
-                        if not image_bytes:
-                            continue
-                            
-                        nparr = np.frombuffer(image_bytes, np.uint8)
-                        image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-                        
-                        if image is not None:
-                            found_image = True
-                            break
-                    except Exception:
-                        continue
-                
-                if not found_image:
-                    return jsonify({'error': 'No image provided or invalid image format'}), 400
-        except Exception as img_error:
-            return jsonify({'error': f'Error processing image: {str(img_error)}'}), 400
-        
-        if image is None:
-            return jsonify({'error': 'Failed to decode image data'}), 400
-        
-        # Detect faces
-        try:
-            if image is None or image.size == 0:
-                return jsonify({'error': 'Invalid image for face detection'}), 400
-                
-            # Check image dimensions
-            if image.shape[0] < 50 or image.shape[1] < 50:
-                return jsonify({'error': 'Image too small for reliable face detection'}), 400
-                
-            faces = face_processor.detect_faces(image)
-            
-            if len(faces) == 0:
-                return jsonify({'error': 'No face detected in image. Please ensure your face is clearly visible'}), 400
-                
-            if len(faces) > 1:
-                return jsonify({'error': 'Multiple faces detected. Please provide an image with only one face'}), 400
-                
-        except Exception as face_error:
-            return jsonify({'error': f'Face detection failed: {str(face_error)}'}), 400
-        
-        # Extract features from the detected face
-        try:
-            face_data = faces[0]
-            if face_data is None or 'face_image' not in face_data:
-                return jsonify({'error': 'Invalid face detection result'}), 400
-                
-            # Assess face quality
-            try:
-                quality = face_processor.assess_face_quality(face_data['face_image'])
-                
-                if quality['sharpness'] < MIN_SHARPNESS:
-                    return jsonify({
-                        'error': 'Face image too blurry. Please ensure good lighting and hold the camera steady.',
-                        'quality': quality
-                    }), 400
-                    
-                if not (BRIGHTNESS_RANGE[0] <= quality['brightness'] <= BRIGHTNESS_RANGE[1]):
-                    if quality['brightness'] < BRIGHTNESS_RANGE[0]:
-                        message = 'Face image too dark. Please improve lighting.'
-                    else:
-                        message = 'Face image too bright. Please reduce lighting or avoid direct light sources.'
-                    return jsonify({'error': message, 'quality': quality}), 400
-            except Exception as quality_error:
-                return jsonify({'error': f'Error assessing face quality: {str(quality_error)}'}), 400
-            
-            # Extract face features
-            try:
-                face_features = face_processor.extract_face_features(face_data['face_image'])
-                if face_features is None or len(face_features) == 0:
-                    return jsonify({'error': 'Failed to extract face features. Please try again with a clearer image'}), 400
-            except Exception as feature_error:
-                return jsonify({'error': f'Error extracting face features: {str(feature_error)}'}), 400
-            
-            # Save face image
-            try:
-                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                filename = f"user_{timestamp}_{name.replace(' ', '_')}.jpg"
-                image_path = face_processor.save_face_image(face_data['face_image'], filename)
-            except Exception as save_error:
-                return jsonify({'error': f'Error saving face image: {str(save_error)}'}), 500
-        except Exception as process_error:
-            return jsonify({'error': f'Error processing face data: {str(process_error)}'}), 500
-        
-        # Add user to database
-        try:
-            user_id = add_user(name, email, face_features, image_path, employee_id, department, age, gender)
-            
-            return jsonify({
-                'success': True,
-                'user_id': user_id,
-                'message': f'Employee {name} registered successfully',
-                'face_detected': True
-            })
-        except Exception as db_error:
-            return jsonify({'error': f'Database error: {str(db_error)}'}), 500
+@app.route('/api/auth/login', methods=['POST'])
+@limiter.limit("5 per minute")  # Strict limit on login attempts
+def login():
+    """
+    Authenticate and get JWT token.
     
+    Expects JSON with:
+    - username: Admin username
+    - password: Admin password
+    
+    Returns:
+    - access_token: JWT token for authenticated requests
+    """
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+        
+        username = data.get('username')
+        password = data.get('password')
+        
+        # Simple authentication (in production, use proper password hashing)
+        admin_username = os.environ.get('ADMIN_USERNAME', 'admin')
+        admin_password = os.environ.get('ADMIN_PASSWORD', 'admin123')
+        
+        if username == admin_username and password == admin_password:
+            # Create JWT token with user identity
+            access_token = create_access_token(
+                identity=username,
+                additional_claims={'role': 'admin'}
+            )
+            return jsonify({
+                'access_token': access_token,
+                'token_type': 'Bearer',
+                'expires_in': int(app.config['JWT_ACCESS_TOKEN_EXPIRES'].total_seconds())
+            })
+        else:
+            return jsonify({'error': 'Invalid credentials'}), 401
+            
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/recognize', methods=['POST'])
-def recognize_face():
-    """Recognize face in uploaded image"""
-    try:
-        # Handle image data
-        if request.json and 'image_data' in request.json:
-            image = face_processor.decode_image(request.json['image_data'])
-        elif 'image' in request.files:
-            file = request.files['image']
-            image_bytes = file.read()
-            image = cv2.imdecode(np.frombuffer(image_bytes, np.uint8), cv2.IMREAD_COLOR)
+
+def optional_jwt_required(fn):
+    """
+    Decorator that makes JWT optional based on AUTH_ENABLED env var.
+    If AUTH_ENABLED=true, JWT is required. Otherwise, endpoint is public.
+    """
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        auth_enabled = os.environ.get('AUTH_ENABLED', 'false').lower() == 'true'
+        if auth_enabled:
+            # JWT is required
+            return jwt_required()(fn)(*args, **kwargs)
         else:
+            # JWT is optional, proceed without authentication
+            return fn(*args, **kwargs)
+    return wrapper
+
+
+@app.route('/api/register', methods=['POST'])
+@limiter.limit("10 per hour")  # Limit registration attempts
+@optional_jwt_required
+def register_user():
+    """
+    Register a new employee with their face.
+    
+    Expects JSON with:
+    - name: Full name
+    - employee_id: Unique employee ID
+    - department: Department name
+    - age: Age (18-120)
+    - gender: Male/Female/Other
+    - email: Email (optional)
+    - image_data: Base64 encoded image from webcam
+    """
+    try:
+        # Get data from request
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+        
+        # Validate input data
+        try:
+            name, email, employee_id, department, age, gender = validate_registration_data(data)
+        except ValidationError as e:
+            return jsonify({'error': str(e)}), 400
+        
+        # Get image data
+        image_data = data.get('image_data')
+        if not image_data:
             return jsonify({'error': 'No image provided'}), 400
         
-        # Detect faces
-        faces = face_processor.detect_faces(image)
+        # Decode image
+        try:
+            image = face_processor.decode_image(image_data)
+        except Exception as e:
+            return jsonify({'error': f'Failed to decode image: {str(e)}'}), 400
         
-        if len(faces) == 0:
+        # Check image quality
+        quality = face_processor.assess_image_quality(image)
+        if quality['is_too_dark']:
+            return jsonify({'error': 'Image too dark. Please improve lighting.'}), 400
+        if quality['is_too_bright']:
+            return jsonify({'error': 'Image too bright. Please reduce lighting.'}), 400
+        if quality['is_too_small']:
+            return jsonify({'error': 'Image too small. Please move closer to camera.'}), 400
+        
+        # Detect face
+        face_locations, face_encodings = face_processor.detect_face(image)
+        
+        if len(face_locations) == 0:
+            return jsonify({'error': 'No face detected. Please ensure your face is visible.'}), 400
+        
+        if len(face_locations) > 1:
+            return jsonify({'error': 'Multiple faces detected. Please ensure only one person is visible.'}), 400
+        
+        # Get the face encoding (128 numbers that represent the face)
+        face_encoding = face_encodings[0]
+        
+        # Check if employee_id already exists
+        existing_user = User.query.filter_by(employee_id=employee_id).first()
+        if existing_user:
+            return jsonify({'error': f'Employee ID {employee_id} already registered'}), 400
+        
+        # Save face image
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"user_{timestamp}_{employee_id}.jpg"
+        image_path = face_processor.save_face_image(image, filename)
+        
+        # Create new user
+        user = User(
+            name=name,
+            employee_id=employee_id,
+            department=department,
+            email=email,
+            age=age,
+            gender=gender,
+            image_path=image_path
+        )
+        user.set_face_encoding(face_encoding)
+        
+        # Save to database
+        db.session.add(user)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'user_id': user.id,
+            'message': f'Employee {name} registered successfully'
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/recognize', methods=['POST'])
+@limiter.limit("30 per minute")  # Limit recognition attempts to prevent abuse
+def recognize_face():
+    """
+    Recognize a face from webcam image.
+    
+    Expects JSON with:
+    - image_data: Base64 encoded image
+    
+    Returns:
+    - recognized: True/False
+    - user: User info if recognized
+    - confidence: How confident we are (0-1)
+    """
+    try:
+        # Get image data
+        data = request.get_json()
+        if not data or 'image_data' not in data:
+            return jsonify({'error': 'No image provided'}), 400
+        
+        # Decode image
+        try:
+            image = face_processor.decode_image(data['image_data'])
+        except Exception as e:
+            return jsonify({'error': f'Failed to decode image: {str(e)}'}), 400
+        
+        # Detect face
+        face_locations, face_encodings = face_processor.detect_face(image)
+        
+        if len(face_encodings) == 0:
             return jsonify({
                 'recognized': False,
                 'message': 'No face detected in image'
             })
         
-        # Use the first detected face
-        face_data = faces[0]
-        quality = face_processor.assess_face_quality(face_data['face_image'])
-        if quality['sharpness'] < MIN_SHARPNESS or not (BRIGHTNESS_RANGE[0] <= quality['brightness'] <= BRIGHTNESS_RANGE[1]):
-            return jsonify({'recognized': False, 'message': 'Low-quality face image. Improve lighting or focus.', 'quality': quality})
-        face_features = face_processor.extract_face_features(face_data['face_image'])
+        # Use first detected face
+        unknown_encoding = face_encodings[0]
         
         # Get all registered users
-        registered_users = get_user_features()
+        users = User.query.all()
         
+        if len(users) == 0:
+            return jsonify({
+                'recognized': False,
+                'message': 'No users registered in system'
+            })
+        
+        # Compare with each registered user
         best_match = None
-        best_similarity = 0.0
-        similarity_threshold = SIMILARITY_THRESHOLD
+        best_confidence = 0.0
         
-        # Compare with all registered users
-        for user in registered_users:
-            similarity = face_processor.compare_faces(face_features, user['face_features'])
+        for user in users:
+            known_encoding = user.get_face_encoding()
+            if known_encoding is None:
+                continue
             
-            if similarity > best_similarity and similarity > similarity_threshold:
-                best_similarity = similarity
+            # Compare faces
+            is_match, confidence = face_processor.compare_faces(
+                known_encoding,
+                unknown_encoding,
+                tolerance=recognition_config['tolerance']
+            )
+            
+            # Keep track of best match
+            if is_match and confidence > best_confidence:
+                best_confidence = confidence
                 best_match = user
         
+        # If we found a match
         if best_match:
-            # Log recognition
-            log_recognition(best_match['id'], best_similarity)
+            # Log the recognition
+            log = RecognitionLog(
+                user_id=best_match.id,
+                confidence=best_confidence
+            )
+            db.session.add(log)
+            db.session.commit()
             
-            # Get user details
-            user_details = get_user_by_id(best_match['id'])
-            
-            if user_details:
-                return jsonify({
-                    'recognized': True,
-                    'user': {
-                        'id': user_details['id'],
-                        'name': user_details['name'],
-                        'email': user_details['email']
-                    },
-                    'confidence': best_similarity,
-                    'bounding_box': [
-                        face_data['x'], face_data['y'], 
-                        face_data['width'], face_data['height']
-                    ]
-                })
-            else:
-                return jsonify({
-                    'recognized': False,
-                    'message': 'User details not found'
-                })
+            return jsonify({
+                'recognized': True,
+                'user': {
+                    'id': best_match.id,
+                    'name': best_match.name,
+                    'email': best_match.email,
+                    'employee_id': best_match.employee_id,
+                    'department': best_match.department
+                },
+                'confidence': best_confidence
+            })
         else:
             return jsonify({
                 'recognized': False,
-                'message': 'Face not recognized',
-                'confidence': best_similarity
+                'message': 'Face not recognized'
             })
-    
+            
     except Exception as e:
+        db.session.rollback()
         return jsonify({'error': str(e)}), 500
+
 
 @app.route('/api/users', methods=['GET'])
+@optional_jwt_required
 def get_users():
-    """Get all registered users"""
+    """Get all registered users."""
     try:
-        users = get_all_users()
-        return jsonify({'users': users})
+        users = User.query.order_by(User.created_at.desc()).all()
+        return jsonify({
+            'users': [user.to_dict() for user in users]
+        })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/logs', methods=['GET'])
-def get_logs():
-    """Get recognition logs"""
-    try:
-        logs = get_recognition_logs(50)
-        return jsonify({'logs': logs})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/recognition-logs', methods=['GET'])
-def get_recognition_logs_api():
-    """Get recognition logs with optional limit parameter"""
-    try:
-        # Get limit parameter from query string, default to 50
-        limit = request.args.get('limit', default=50, type=int)
-        
-        # Validate limit is positive
-        if limit <= 0:
-            limit = 50
-        
-        # Call existing database function
-        logs = get_recognition_logs(limit)
-        
-        return jsonify({'logs': logs}), 200
-    except Exception as e:
-        return jsonify({'error': 'Failed to fetch recognition logs'}), 500
 
 @app.route('/api/user/<int:user_id>', methods=['GET'])
+@optional_jwt_required
 def get_user(user_id):
-    """Get user details by ID"""
+    """Get a specific user by ID."""
     try:
-        user = get_user_by_id(user_id)
-        if user:
-            # Don't return face features in API response
-            del user['face_features']
-            return jsonify({'user': user})
-        else:
+        # Validate user_id
+        try:
+            user_id = validate_user_id(user_id)
+        except ValidationError as e:
+            return jsonify({'error': str(e)}), 400
+        
+        # Fixed: Use db.session.get() instead of deprecated Query.get()
+        user = db.session.get(User, user_id)
+        if not user:
             return jsonify({'error': 'User not found'}), 404
+        
+        return jsonify({'user': user.to_dict()})
+        
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
 
 @app.route('/api/user/<int:user_id>', methods=['DELETE'])
-def delete_user_endpoint(user_id):
-    """Delete a user by ID"""
+@limiter.limit("20 per hour")  # Limit delete operations
+@optional_jwt_required
+def delete_user(user_id):
+    """Delete a user."""
     try:
-        deleted, image_path = delete_user(user_id)
+        # Validate user_id
+        try:
+            user_id = validate_user_id(user_id)
+        except ValidationError as e:
+            return jsonify({'error': str(e)}), 400
         
-        if deleted:
-            # Try to delete the face image file
-            if image_path and os.path.exists(image_path):
-                try:
-                    os.remove(image_path)
-                except Exception:
-                    pass  # Continue even if file deletion fails
-            
-            return jsonify({
-                'success': True,
-                'message': 'User deleted successfully'
-            })
-        else:
+        # Fixed: Use db.session.get() instead of deprecated Query.get()
+        user = db.session.get(User, user_id)
+        if not user:
             return jsonify({'error': 'User not found'}), 404
+        
+        # Delete image file if it exists
+        if user.image_path and os.path.exists(user.image_path):
+            try:
+                os.remove(user.image_path)
+            except:
+                pass  # Continue even if file deletion fails
+        
+        # Delete user (cascade will delete recognition logs)
+        db.session.delete(user)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': 'User deleted successfully'
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/logs', methods=['GET'])
+@optional_jwt_required
+def get_logs():
+    """Get recent recognition logs."""
+    try:
+        # Get last 50 logs
+        logs = RecognitionLog.query.order_by(
+            RecognitionLog.timestamp.desc()
+        ).limit(50).all()
+        
+        return jsonify({
+            'logs': [log.to_dict() for log in logs]
+        })
+        
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+
 @app.route('/api/stats', methods=['GET'])
-def api_get_system_stats():
-    """Get comprehensive system statistics"""
+@optional_jwt_required
+def get_stats():
+    """Get system statistics."""
     try:
-        users = get_all_users()
-        logs = get_recognition_logs(1000)  # Get more logs for better stats
+        # Total users
+        total_users = User.query.count()
         
-        total_users = len(users)
-        total_recognitions = len(logs)
+        # Total recognitions
+        total_recognitions = RecognitionLog.query.count()
         
-        # Calculate average confidence
-        avg_confidence = 0
-        if logs:
-            avg_confidence = sum(log.get('confidence', 0) for log in logs) / len(logs)
+        # Average confidence
+        avg_confidence = db.session.query(
+            db.func.avg(RecognitionLog.confidence)
+        ).scalar() or 0
         
-        # Calculate recognition rate (last 24 hours)
-        from datetime import timedelta
+        # Recent activity (last 24 hours)
         day_ago = datetime.now() - timedelta(days=1)
-        recent_logs = []
-        for log in logs:
-            try:
-                # Handle different timestamp formats
-                timestamp_str = log['timestamp']
-                try:
-                    if 'T' in timestamp_str:
-                        # ISO format
-                        if timestamp_str.endswith('Z'):
-                            timestamp_str = timestamp_str.replace('Z', '+00:00')
-                        log_time = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00') if timestamp_str.endswith('Z') else timestamp_str)
-                    else:
-                        # MySQL timestamp format
-                        log_time = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S')
-                    
-                    if log_time > day_ago:
-                        recent_logs.append(log)
-                except (ValueError, TypeError):
-                    # Skip logs with invalid timestamps
-                    continue
-            except (ValueError, TypeError, KeyError):
-                # Skip logs with invalid timestamps
-                continue
+        recent_activity = RecognitionLog.query.filter(
+            RecognitionLog.timestamp >= day_ago
+        ).count()
         
-        recent_activity = len(recent_logs)
-        
-        # Calculate success rate
-        high_confidence_logs = [log for log in logs if log.get('confidence', 0) > 0.7]
-        success_rate = len(high_confidence_logs) / len(logs) * 100 if logs else 0
-        
-        # Get most active users
-        user_activity = {}
-        for log in logs:
-            user_name = log['user_name']
-            user_activity[user_name] = user_activity.get(user_name, 0) + 1
-        
-        most_active_users = sorted(user_activity.items(), key=lambda x: x[1], reverse=True)[:5]
-        
-        # Add cache statistics
-        cache_stats = face_processor.get_cache_stats() if hasattr(face_processor, 'get_cache_stats') else {}
+        # Most active users (top 5)
+        most_active = db.session.query(
+            User.name,
+            db.func.count(RecognitionLog.id).label('count')
+        ).join(RecognitionLog).group_by(User.id).order_by(
+            db.text('count DESC')
+        ).limit(5).all()
         
         return jsonify({
             'totalUsers': total_users,
             'totalRecognitions': total_recognitions,
             'avgConfidence': round(avg_confidence, 3),
             'recentActivity': recent_activity,
-            'successRate': round(success_rate, 1),
-            'mostActiveUsers': most_active_users,
-            'systemUptime': 'Active',
-            'faceDetectionMode': 'OpenCV' if not face_processor.use_face_recognition else 'Advanced',
-            'cache': cache_stats
+            'mostActiveUsers': [
+                {'name': name, 'count': count}
+                for name, count in most_active
+            ]
         })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
         
-@app.route('/api/performance', methods=['GET'])
-def get_performance():
-    """Get system performance metrics"""
-    import psutil
-    try:
-        stats = {
-            'cpu': psutil.cpu_percent(interval=0.1),
-            'memory': psutil.virtual_memory()._asdict(),
-            'cache': face_processor.get_cache_stats() if hasattr(face_processor, 'get_cache_stats') else {}
-        }
-        return jsonify(stats)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+
 @app.route('/api/export/logs', methods=['GET'])
-def api_export_logs():
-    """Export recognition logs as CSV"""
+@limiter.limit("10 per hour")  # Limit export operations
+@optional_jwt_required
+def export_logs():
+    """Export recognition logs as CSV."""
     try:
-        logs = get_recognition_logs(1000)
+        logs = RecognitionLog.query.order_by(
+            RecognitionLog.timestamp.desc()
+        ).limit(1000).all()
         
-        csv_data = "User Name,Email,Confidence,Timestamp\n"
+        # Create CSV data
+        csv_data = "User Name,Email,Employee ID,Confidence,Timestamp\n"
         for log in logs:
-            csv_data += f"{log['user_name']},{log.get('user_email', '')},{log.get('confidence', 0)},{log['timestamp']}\n"
+            user = log.user
+            csv_data += f"{user.name},{user.email or ''},{user.employee_id},{log.confidence},{log.timestamp}\n"
         
         return jsonify({
             'success': True,
             'csv_data': csv_data,
             'total_records': len(logs)
         })
+        
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
-def serve_react_app(path):
+def serve_frontend(path):
+    """Serve React frontend."""
     try:
-        if os.path.exists(os.path.join(FRONTEND_BUILD_DIR, path)):
+        if path and os.path.exists(os.path.join(FRONTEND_BUILD_DIR, path)):
             return send_from_directory(FRONTEND_BUILD_DIR, path)
         return send_from_directory(FRONTEND_BUILD_DIR, 'index.html')
     except Exception:
-        return jsonify({'error': 'Frontend build not found. Please run frontend build.'}), 404
+        return jsonify({'error': 'Frontend not found. Run: cd frontend && npm run build'}), 404
+
 
 if __name__ == '__main__':
     app.run(
-        debug=os.environ.get('FLASK_ENV') == 'development',
+        debug=app.config['DEBUG'],
         host=os.environ.get('HOST', '0.0.0.0'),
         port=int(os.environ.get('PORT', 5000))
     )

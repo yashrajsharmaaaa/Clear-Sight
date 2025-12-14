@@ -1,5 +1,7 @@
-import { useState, lazy, Suspense } from 'react';
+import { useState, lazy, Suspense, useEffect } from 'react';
 import './App.css';
+import authService from './services/auth';
+import Login from './components/Login';
 
 // Implement code splitting with lazy loading
 const Registration = lazy(() => import('./components/Registration'));
@@ -16,6 +18,54 @@ const LoadingComponent = () => (
 
 function App() {
   const [currentPage, setCurrentPage] = useState('registration');
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authChecking, setAuthChecking] = useState(true);
+
+  useEffect(() => {
+    // Check if user is already authenticated
+    checkAuthentication();
+  }, []);
+
+  const checkAuthentication = async () => {
+    try {
+      // Check if auth is enabled
+      const authEnabled = await authService.isAuthEnabled();
+      
+      if (!authEnabled) {
+        // Auth not required, proceed
+        setIsAuthenticated(true);
+      } else {
+        // Auth required, check if user has valid token
+        const hasToken = authService.isAuthenticated();
+        setIsAuthenticated(hasToken);
+      }
+    } catch (error) {
+      console.error('Auth check failed:', error);
+      // On error, assume no auth required
+      setIsAuthenticated(true);
+    } finally {
+      setAuthChecking(false);
+    }
+  };
+
+  const handleLoginSuccess = () => {
+    setIsAuthenticated(true);
+  };
+
+  const handleLogout = () => {
+    authService.logout();
+    setIsAuthenticated(false);
+  };
+
+  // Show loading while checking authentication
+  if (authChecking) {
+    return <LoadingComponent />;
+  }
+
+  // Show login if not authenticated
+  if (!isAuthenticated) {
+    return <Login onLoginSuccess={handleLoginSuccess} />;
+  }
 
   const renderPage = () => {
     switch (currentPage) {
@@ -238,6 +288,33 @@ function App() {
               <div style={{ fontSize: 11, opacity: 0.6 }}>Administrator</div>
             </div>
           </div>
+          
+          {/* Logout button */}
+          <button
+            onClick={handleLogout}
+            style={{
+              width: '100%',
+              padding: '10px',
+              backgroundColor: 'rgba(239, 68, 68, 0.1)',
+              color: '#ef4444',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '13px',
+              fontWeight: 600,
+              transition: 'all 0.2s',
+              marginBottom: '12px'
+            }}
+            onMouseOver={(e) => {
+              e.target.style.backgroundColor = 'rgba(239, 68, 68, 0.2)';
+            }}
+            onMouseOut={(e) => {
+              e.target.style.backgroundColor = 'rgba(239, 68, 68, 0.1)';
+            }}
+          >
+            🚪 Logout
+          </button>
+          
           <div style={{
             fontSize: 10,
             opacity: 0.5,
