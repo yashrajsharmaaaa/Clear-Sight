@@ -439,10 +439,11 @@ def get_stats():
         # Total recognitions
         total_recognitions = RecognitionLog.query.count()
         
-        # Average confidence
+        # Average confidence (handle case when no logs exist)
         avg_confidence = db.session.query(
             db.func.avg(RecognitionLog.confidence)
-        ).scalar() or 0
+        ).scalar()
+        avg_confidence = float(avg_confidence) if avg_confidence else 0.0
         
         # Recent activity (last 24 hours)
         day_ago = datetime.now() - timedelta(days=1)
@@ -450,27 +451,34 @@ def get_stats():
             RecognitionLog.timestamp >= day_ago
         ).count()
         
-        # Most active users (top 5)
-        most_active = db.session.query(
-            User.name,
-            db.func.count(RecognitionLog.id).label('count')
-        ).join(RecognitionLog).group_by(User.id).order_by(
-            db.text('count DESC')
-        ).limit(5).all()
+        # Most active users (top 5) - only if there are logs
+        most_active = []
+        if total_recognitions > 0:
+            most_active_query = db.session.query(
+                User.name,
+                db.func.count(RecognitionLog.id).label('count')
+            ).join(RecognitionLog).group_by(User.id).order_by(
+                db.text('count DESC')
+            ).limit(5).all()
+            most_active = [
+                {'name': name, 'count': count}
+                for name, count in most_active_query
+            ]
         
         return jsonify({
             'totalUsers': total_users,
             'totalRecognitions': total_recognitions,
             'avgConfidence': round(avg_confidence, 3),
             'recentActivity': recent_activity,
-            'mostActiveUsers': [
-                {'name': name, 'count': count}
-                for name, count in most_active
-            ]
+            'mostActiveUsers': most_active
         })
         
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        print(f"Stats endpoint error: {str(e)}")  # Log error for debugging
+        return jsonify({
+            'error': 'Failed to fetch statistics',
+            'details': str(e)
+        }), 500
 
 
 @app.route('/api/export/logs', methods=['GET'])
